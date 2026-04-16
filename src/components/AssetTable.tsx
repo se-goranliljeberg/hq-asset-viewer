@@ -1,7 +1,7 @@
 import { useRef, useState, useCallback, useMemo } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { AssetRow, SortState } from "@/lib/asset-types";
-import type { AssetEdits, AssetStatus } from "@/lib/asset-edits";
+import type { AssetEdits } from "@/lib/asset-edits";
 import { STATUS_OPTIONS, getEditKey } from "@/lib/asset-edits";
 import { ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import {
@@ -11,6 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { CalendarIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format, parseISO } from "date-fns";
@@ -22,6 +23,7 @@ interface Props {
   onSort: (col: string) => void;
   edits: Record<string, AssetEdits>;
   onEdit: (rowId: number, field: keyof AssetEdits, value: string) => void;
+  onCellEdit: (rowId: number, column: string, value: string) => void;
   selectedIds: Set<number>;
   onSelectionChange: (ids: Set<number>) => void;
 }
@@ -30,8 +32,68 @@ const MIN_COL_W = 80;
 const DEFAULT_COL_W = 160;
 const CHECKBOX_COL_W = 40;
 const EDITABLE_COLS = ["Status", "Warranty until"] as const;
+const NON_EDITABLE_COLS = new Set(["Exceptions", "Source file"]);
 
-export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, selectedIds, onSelectionChange }: Props) {
+function InlineCell({ value, width, col, rowId, onCellEdit }: {
+  value: string;
+  width: number;
+  col: string;
+  rowId: number;
+  onCellEdit: (rowId: number, column: string, value: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const startEdit = useCallback(() => {
+    setDraft(value);
+    setEditing(true);
+    setTimeout(() => inputRef.current?.focus(), 0);
+  }, [value]);
+
+  const commit = useCallback(() => {
+    setEditing(false);
+    if (draft !== value) {
+      onCellEdit(rowId, col, draft);
+    }
+  }, [draft, value, rowId, col, onCellEdit]);
+
+  const cancel = useCallback(() => {
+    setEditing(false);
+    setDraft(value);
+  }, [value]);
+
+  if (editing) {
+    return (
+      <div className="px-1 py-0.5" style={{ width, minWidth: MIN_COL_W }}>
+        <Input
+          ref={inputRef}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commit();
+            if (e.key === "Escape") cancel();
+          }}
+          className="h-7 text-xs px-2"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="truncate px-3 py-1.5 cursor-text hover:bg-muted/50 rounded-sm transition-colors"
+      style={{ width, minWidth: MIN_COL_W }}
+      title={`${value} (double-click to edit)`}
+      onDoubleClick={startEdit}
+    >
+      {value}
+    </div>
+  );
+}
+
+export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellEdit, selectedIds, onSelectionChange }: Props) {
   const parentRef = useRef<HTMLDivElement>(null);
   const displayCols = useMemo(
     () => [...columns, ...EDITABLE_COLS, "Exceptions", "Source file"],
@@ -104,7 +166,6 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, selecte
       <div style={{ minWidth: totalWidth }}>
         {/* Sticky header */}
         <div className="sticky top-0 z-10 flex bg-muted/80 backdrop-blur-sm border-b border-border">
-          {/* Checkbox column header */}
           <div
             className="flex items-center justify-center px-1 py-2.5"
             style={{ width: CHECKBOX_COL_W, minWidth: CHECKBOX_COL_W }}
@@ -167,7 +228,6 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, selecte
                   width: "100%",
                 }}
               >
-                {/* Checkbox */}
                 <div
                   className="flex items-center justify-center px-1"
                   style={{ width: CHECKBOX_COL_W, minWidth: CHECKBOX_COL_W }}
@@ -237,21 +297,36 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, selecte
                     );
                   }
 
-                  const val =
-                    col === "Exceptions" ? row.exceptions.join(", ") : col === "Source file" ? row.sourceFile : (row.raw[col] ?? "");
+                  // Exceptions and Source file are read-only
+                  if (NON_EDITABLE_COLS.has(col)) {
+                    const val = col === "Exceptions" ? row.exceptions.join(", ") : row.sourceFile;
+                    return (
+                      <div
+                        key={col}
+                        className="truncate px-3 py-1.5"
+                        style={{ width: w, minWidth: MIN_COL_W }}
+                        title={val}
+                      >
+                        {col === "Exceptions" && val ? (
+                          <span className="text-destructive text-xs font-medium">{val}</span>
+                        ) : (
+                          val
+                        )}
+                      </div>
+                    );
+                  }
+
+                  // Editable raw data columns — double-click to edit
+                  const val = row.raw[col] ?? "";
                   return (
-                    <div
+                    <InlineCell
                       key={col}
-                      className="truncate px-3 py-1.5"
-                      style={{ width: w, minWidth: MIN_COL_W }}
-                      title={val}
-                    >
-                      {col === "Exceptions" && val ? (
-                        <span className="text-destructive text-xs font-medium">{val}</span>
-                      ) : (
-                        val
-                      )}
-                    </div>
+                      value={val}
+                      width={w}
+                      col={col}
+                      rowId={row.id}
+                      onCellEdit={onCellEdit}
+                    />
                   );
                 })}
               </div>

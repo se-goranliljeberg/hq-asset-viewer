@@ -80,6 +80,23 @@ export function AssetViewer() {
     });
   }, []);
 
+  const handleCellEdit = useCallback((rowId: number, column: string, value: string) => {
+    if (!data) return;
+    const updatedRows = data.rows.map((r) => {
+      if (r.id !== rowId) return r;
+      const newRaw = { ...r.raw, [column]: value };
+      const colLower = column.toLowerCase();
+      return {
+        ...r,
+        raw: newRaw,
+        computername: colLower === "computername" ? value.trim() : r.computername,
+        modell: colLower === "modell" ? value.trim() : r.modell,
+        user: colLower === "user" ? value.trim() : r.user,
+      };
+    });
+    setData({ ...data, rows: updatedRows });
+  }, [data, setData]);
+
   const handleCardClick = useCallback((key: KpiKey) => {
     if (activeCard === key) {
       setActiveCard(null);
@@ -373,6 +390,7 @@ export function AssetViewer() {
                   onSort={toggleSort}
                   edits={edits}
                   onEdit={handleEdit}
+                  onCellEdit={handleCellEdit}
                   selectedIds={selectedIds}
                   onSelectionChange={setSelectedIds}
                 />
