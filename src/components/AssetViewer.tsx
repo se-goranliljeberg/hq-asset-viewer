@@ -390,6 +390,7 @@ export function AssetViewer() {
                   onSort={toggleSort}
                   edits={edits}
                   onEdit={handleEdit}
+                  onCellEdit={handleCellEdit}
                   selectedIds={selectedIds}
                   onSelectionChange={setSelectedIds}
                 />
