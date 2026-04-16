@@ -369,8 +369,10 @@ export function AssetViewer() {
                   modelFilter={modelFilter} onModelFilter={setModelFilter}
                   userFilter={userFilter} onUserFilter={setUserFilter}
                   sourceFilter={sourceFilter} onSourceFilter={setSourceFilter}
+                  statusFilter={statusFilter} onStatusFilter={setStatusFilter}
                   exceptionsOnly={exceptionsOnly} onExceptionsOnly={setExceptionsOnly}
                   models={models} users={users} sources={sources}
+                  statuses={[...STATUS_OPTIONS]}
                 />
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>{filtered.length.toLocaleString()} of {rows.length.toLocaleString()} rows</span>
