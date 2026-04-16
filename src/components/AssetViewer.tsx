@@ -131,24 +131,38 @@ export function AssetViewer() {
     }
   }, [data, setData]);
 
+  const applySeedEdits = useCallback((seed: Record<string, AssetEdits>) => {
+    if (Object.keys(seed).length > 0) {
+      setEditsState((prev) => {
+        const next = { ...prev, ...seed };
+        saveEdits(next);
+        return next;
+      });
+    }
+  }, []);
+
   const handleImportReplace = useCallback(() => {
     setImportModeOpen(false);
     if (pendingParsed.current) {
       setData(pendingParsed.current);
+      applySeedEdits(pendingSeedEdits.current);
       toast.success(`Replaced with ${pendingParsed.current.rows.length} rows`);
       pendingParsed.current = null;
+      pendingSeedEdits.current = {};
     }
-  }, [setData]);
+  }, [setData, applySeedEdits]);
 
   const handleImportAdd = useCallback(() => {
     setImportModeOpen(false);
     if (pendingParsed.current && data) {
       const merged = mergeData(data, pendingParsed.current);
       setData(merged);
+      applySeedEdits(pendingSeedEdits.current);
       toast.success(`Added ${pendingParsed.current.rows.length} rows (total: ${merged.rows.length})`);
       pendingParsed.current = null;
+      pendingSeedEdits.current = {};
     }
-  }, [data, setData]);
+  }, [data, setData, applySeedEdits]);
 
 
   const handleAddRow = useCallback((raw: Record<string, string>, status: AssetStatus, warrantyUntil: string) => {
