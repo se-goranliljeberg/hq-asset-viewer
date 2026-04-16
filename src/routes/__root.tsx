@@ -29,14 +29,16 @@ export const Route = createRootRoute({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
+      { title: "HQ Asset Viewer" },
+      { name: "description", content: "Loads and views Excel asset lists securely on your device." },
       { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
+      { property: "og:title", content: "HQ Asset Viewer" },
+      { property: "og:description", content: "Loads and views Excel asset lists securely on your device." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:title", content: "HQ Asset Viewer" },
+      { name: "twitter:description", content: "Loads and views Excel asset lists securely on your device." },
     ],
     links: [
       {
