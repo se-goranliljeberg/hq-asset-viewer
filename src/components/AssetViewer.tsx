@@ -15,13 +15,16 @@ import { PrivacyFooter } from "./PrivacyFooter";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Upload, Trash2, Download, ShieldCheck, RefreshCw, Plus } from "lucide-react";
 import { AddRowDialog } from "./AddRowDialog";
-import type { AssetStatus } from "@/lib/asset-edits";
+
 import { toast } from "sonner";
 
 function useStickyState() {
