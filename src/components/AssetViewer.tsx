@@ -3,7 +3,7 @@ import type { AssetData, AssetRow, SortState } from "@/lib/asset-types";
 import type { AssetEdits } from "@/lib/asset-edits";
 import { saveData, loadData, clearData } from "@/lib/asset-store";
 import { loadEdits, saveEdits, clearEdits, getEditKey } from "@/lib/asset-edits";
-import { getSheetNames, parseSheet } from "@/lib/excel-parser";
+import { getSheetNames, parseSheet, mergeData } from "@/lib/excel-parser";
 import { exportCSV } from "@/lib/csv-export";
 import { KpiCards } from "./KpiCards";
 import type { KpiKey } from "./KpiCards";
@@ -50,8 +50,10 @@ export function AssetViewer() {
   const [confirmClear, setConfirmClear] = useState(false);
   const [sheetPickerOpen, setSheetPickerOpen] = useState(false);
   const [pendingSheets, setPendingSheets] = useState<string[]>([]);
+  const [importModeOpen, setImportModeOpen] = useState(false);
   const pendingBuffer = useRef<ArrayBuffer | null>(null);
   const pendingFilename = useRef("");
+  const pendingParsed = useRef<AssetData | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -78,6 +80,35 @@ export function AssetViewer() {
     setExceptionsOnly(key === "exceptions");
   }, [activeCard]);
 
+  const applyParsed = useCallback((parsed: AssetData) => {
+    if (data) {
+      pendingParsed.current = parsed;
+      setImportModeOpen(true);
+    } else {
+      setData(parsed);
+      toast.success(`Loaded ${parsed.rows.length} rows from "${parsed.filename}"`);
+    }
+  }, [data, setData]);
+
+  const handleImportReplace = useCallback(() => {
+    setImportModeOpen(false);
+    if (pendingParsed.current) {
+      setData(pendingParsed.current);
+      toast.success(`Replaced with ${pendingParsed.current.rows.length} rows`);
+      pendingParsed.current = null;
+    }
+  }, [setData]);
+
+  const handleImportAdd = useCallback(() => {
+    setImportModeOpen(false);
+    if (pendingParsed.current && data) {
+      const merged = mergeData(data, pendingParsed.current);
+      setData(merged);
+      toast.success(`Added ${pendingParsed.current.rows.length} rows (total: ${merged.rows.length})`);
+      pendingParsed.current = null;
+    }
+  }, [data, setData]);
+
   const handleFile = useCallback(async (file: File) => {
     const buffer = await file.arrayBuffer();
     const sheets = getSheetNames(buffer);
@@ -87,21 +118,17 @@ export function AssetViewer() {
       setPendingSheets(sheets);
       setSheetPickerOpen(true);
     } else {
-      const parsed = parseSheet(buffer, sheets[0], file.name);
-      setData(parsed);
-      toast.success(`Loaded ${parsed.rows.length} rows from "${file.name}"`);
+      applyParsed(parseSheet(buffer, sheets[0], file.name));
     }
-  }, [setData]);
+  }, [applyParsed]);
 
   const handleSheetPick = useCallback((sheet: string) => {
     setSheetPickerOpen(false);
     if (pendingBuffer.current) {
-      const parsed = parseSheet(pendingBuffer.current, sheet, pendingFilename.current);
-      setData(parsed);
-      toast.success(`Loaded ${parsed.rows.length} rows from sheet "${sheet}"`);
+      applyParsed(parseSheet(pendingBuffer.current, sheet, pendingFilename.current));
       pendingBuffer.current = null;
     }
-  }, [setData]);
+  }, [applyParsed]);
 
   const onFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -281,6 +308,26 @@ export function AssetViewer() {
           onPick={handleSheetPick}
           onCancel={() => setSheetPickerOpen(false)}
         />
+
+        <AlertDialog open={importModeOpen} onOpenChange={setImportModeOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Data already loaded</AlertDialogTitle>
+              <AlertDialogDescription>
+                Would you like to replace all existing data or add the new rows to the current dataset? Duplicates will be flagged as exceptions.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleImportAdd} className={buttonVariants({ variant: "outline" })}>
+                Add Data
+              </AlertDialogAction>
+              <AlertDialogAction onClick={handleImportReplace}>
+                Replace All
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </TooltipProvider>
   );
