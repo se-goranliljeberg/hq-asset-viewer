@@ -1,4 +1,3 @@
-import { saveAs } from "file-saver";
 import type { AssetRow } from "./asset-types";
 
 export function exportCSV(rows: AssetRow[], columns: string[]) {
@@ -18,5 +17,10 @@ export function exportCSV(rows: AssetRow[], columns: string[]) {
 
   const csv = [header, ...lines].join("\r\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-  saveAs(blob, `asset-export-${new Date().toISOString().slice(0, 10)}.csv`);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `asset-export-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
