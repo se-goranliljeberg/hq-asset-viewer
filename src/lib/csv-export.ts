@@ -1,4 +1,3 @@
-import { saveAs } from "file-saver";
 import type { AssetRow } from "./asset-types";
 
 export function exportCSV(rows: AssetRow[], columns: string[]) {
