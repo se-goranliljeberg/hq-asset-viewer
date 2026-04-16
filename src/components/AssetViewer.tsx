@@ -115,11 +115,7 @@ export function AssetViewer() {
     }
   }, [data, setData]);
 
-  const hasManualOrEdits = useMemo(() => {
-    const hasEdits = Object.values(edits).some((e) => e.status !== "" || e.warrantyUntil !== "");
-    const hasManual = rows.some((r) => r.sourceFile === "Manual entry");
-    return hasEdits || hasManual;
-  }, [edits, rows]);
+
 
   const handleAddRow = useCallback((raw: Record<string, string>, status: AssetStatus, warrantyUntil: string) => {
     if (!data) return;
@@ -361,6 +357,11 @@ export function AssetViewer() {
               <AlertDialogTitle>Clear all local data?</AlertDialogTitle>
               <AlertDialogDescription>
                 This will permanently delete the loaded asset data and any edits from your browser.
+                {hasManualOrEdits && (
+                  <span className="block mt-2 font-semibold text-destructive">
+                    ⚠ You have manual entries or edits that will be lost.
+                  </span>
+                )}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -383,6 +384,11 @@ export function AssetViewer() {
               <AlertDialogTitle>Data already loaded</AlertDialogTitle>
               <AlertDialogDescription>
                 Would you like to replace all existing data or add the new rows to the current dataset? Duplicates will be flagged as exceptions.
+                {hasManualOrEdits && (
+                  <span className="block mt-2 font-semibold text-destructive">
+                    ⚠ Replacing will discard your manual entries and edits.
+                  </span>
+                )}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -396,6 +402,13 @@ export function AssetViewer() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        <AddRowDialog
+          open={addRowOpen}
+          onOpenChange={setAddRowOpen}
+          columns={columns}
+          onSave={handleAddRow}
+        />
       </div>
     </TooltipProvider>
   );
