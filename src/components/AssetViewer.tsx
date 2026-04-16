@@ -4,6 +4,7 @@ import type { AssetEdits, AssetStatus } from "@/lib/asset-edits";
 import { saveData, loadData, clearData } from "@/lib/asset-store";
 import { loadEdits, saveEdits, clearEdits, getEditKey, STATUS_OPTIONS } from "@/lib/asset-edits";
 import { getSheetNames, parseSheet, mergeData } from "@/lib/excel-parser";
+import type { ParseResult } from "@/lib/excel-parser";
 import { exportCSV } from "@/lib/csv-export";
 import { KpiCards } from "./KpiCards";
 import type { KpiKey } from "./KpiCards";
@@ -108,13 +109,24 @@ export function AssetViewer() {
     setExceptionsOnly(key === "exceptions");
   }, [activeCard]);
 
-  const applyParsed = useCallback((parsed: AssetData) => {
+  const applyParsed = useCallback((result: ParseResult) => {
+    const applySeedEdits = (seed: Record<string, AssetEdits>) => {
+      if (Object.keys(seed).length > 0) {
+        setEditsState((prev) => {
+          const next = { ...prev, ...seed };
+          saveEdits(next);
+          return next;
+        });
+      }
+    };
     if (data) {
-      pendingParsed.current = parsed;
+      pendingParsed.current = result.data;
+      pendingSeedEdits.current = result.seedEdits;
       setImportModeOpen(true);
     } else {
-      setData(parsed);
-      toast.success(`Loaded ${parsed.rows.length} rows from "${parsed.filename}"`);
+      setData(result.data);
+      applySeedEdits(result.seedEdits);
+      toast.success(`Loaded ${result.data.rows.length} rows from "${result.data.filename}"`);
     }
   }, [data, setData]);
 
