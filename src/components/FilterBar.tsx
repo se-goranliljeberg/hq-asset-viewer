@@ -13,11 +13,14 @@ interface Props {
   onUserFilter: (v: string) => void;
   sourceFilter: string;
   onSourceFilter: (v: string) => void;
+  statusFilter: string;
+  onStatusFilter: (v: string) => void;
   exceptionsOnly: boolean;
   onExceptionsOnly: (v: boolean) => void;
   models: string[];
   users: string[];
   sources: string[];
+  statuses: string[];
 }
 
 export function FilterBar({
@@ -25,8 +28,9 @@ export function FilterBar({
   modelFilter, onModelFilter,
   userFilter, onUserFilter,
   sourceFilter, onSourceFilter,
+  statusFilter, onStatusFilter,
   exceptionsOnly, onExceptionsOnly,
-  models, users, sources,
+  models, users, sources, statuses,
 }: Props) {
   return (
     <div className="flex flex-wrap items-center gap-3">
@@ -77,6 +81,20 @@ export function FilterBar({
           </SelectContent>
         </Select>
       )}
+
+      <Select value={statusFilter} onValueChange={onStatusFilter}>
+        <SelectTrigger className="w-[180px]">
+          <SelectValue placeholder="All Statuses" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="__all__">All Statuses</SelectItem>
+          <SelectItem value="__none__">No status set</SelectItem>
+          {statuses.map((s) => (
+            <SelectItem key={s} value={s}>{s}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
 
       <Tooltip>
         <TooltipTrigger asChild>
