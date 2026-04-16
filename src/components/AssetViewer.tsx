@@ -1,8 +1,8 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import type { AssetData, AssetRow, SortState } from "@/lib/asset-types";
-import type { AssetEdits } from "@/lib/asset-edits";
+import type { AssetEdits, AssetStatus } from "@/lib/asset-edits";
 import { saveData, loadData, clearData } from "@/lib/asset-store";
-import { loadEdits, saveEdits, clearEdits, getEditKey } from "@/lib/asset-edits";
+import { loadEdits, saveEdits, clearEdits, getEditKey, STATUS_OPTIONS } from "@/lib/asset-edits";
 import { getSheetNames, parseSheet, mergeData } from "@/lib/excel-parser";
 import { exportCSV } from "@/lib/csv-export";
 import { KpiCards } from "./KpiCards";
@@ -15,13 +15,16 @@ import { PrivacyFooter } from "./PrivacyFooter";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Upload, Trash2, Download, ShieldCheck, RefreshCw, Plus } from "lucide-react";
 import { AddRowDialog } from "./AddRowDialog";
-import type { AssetStatus } from "@/lib/asset-edits";
+
 import { toast } from "sonner";
 
 function useStickyState() {
@@ -52,6 +55,7 @@ export function AssetViewer() {
   const [exceptionsOnly, setExceptionsOnly] = useState(false);
   const [activeCard, setActiveCard] = useState<KpiKey | null>(null);
   const [sort, setSort] = useState<SortState>({ column: "", dir: null });
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [confirmClear, setConfirmClear] = useState(false);
   const [sheetPickerOpen, setSheetPickerOpen] = useState(false);
   const [pendingSheets, setPendingSheets] = useState<string[]>([]);
@@ -326,6 +330,42 @@ export function AssetViewer() {
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>{filtered.length.toLocaleString()} of {rows.length.toLocaleString()} rows</span>
                 </div>
+                {selectedIds.size > 0 && (
+                  <div className="flex items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-2">
+                    <span className="text-sm font-medium">{selectedIds.size} selected</span>
+                    <Select
+                      value="__batch__"
+                      onValueChange={(v) => {
+                        if (v === "__batch__") return;
+                        const statusVal = v === "__none__" ? "" : v;
+                        setEditsState((prev) => {
+                          const next = { ...prev };
+                          for (const id of selectedIds) {
+                            const key = getEditKey(id);
+                            next[key] = { ...(next[key] ?? { status: "", warrantyUntil: "" }), status: statusVal as any };
+                          }
+                          saveEdits(next);
+                          return next;
+                        });
+                        toast.success(`Updated status for ${selectedIds.size} rows`);
+                      }}
+                    >
+                      <SelectTrigger className="h-8 w-[200px] text-xs">
+                        <SelectValue placeholder="Set status for selected…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__batch__" disabled>Set status for selected…</SelectItem>
+                        <SelectItem value="__none__">— Clear status</SelectItem>
+                        {STATUS_OPTIONS.map((opt) => (
+                          <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>
+                      Deselect all
+                    </Button>
+                  </div>
+                )}
                 <AssetTable
                   rows={filtered}
                   columns={columns}
@@ -333,6 +373,8 @@ export function AssetViewer() {
                   onSort={toggleSort}
                   edits={edits}
                   onEdit={handleEdit}
+                  selectedIds={selectedIds}
+                  onSelectionChange={setSelectedIds}
                 />
               </TabsContent>
 
