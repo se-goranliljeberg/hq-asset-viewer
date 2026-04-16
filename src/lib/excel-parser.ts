@@ -49,13 +49,47 @@ export function parseSheet(buffer: ArrayBuffer, sheetName: string, filename: str
       raw[col] = String(row[col] ?? "").trim();
     }
 
-    return { id: idx, computername, modell, user, raw, exceptions };
+    return { id: idx, computername, modell, user, raw, exceptions, sourceFile: filename };
   });
 
   return {
     rows,
     columns: originalColumns,
     filename,
+    loadedAt: new Date().toISOString(),
+  };
+}
+
+export function mergeData(existing: AssetData, incoming: AssetData): AssetData {
+  const maxId = existing.rows.reduce((m, r) => Math.max(m, r.id), -1);
+  const reindexed = incoming.rows.map((r, i) => ({ ...r, id: maxId + 1 + i }));
+  const allRows = [...existing.rows, ...reindexed];
+
+  // Union of columns
+  const colSet = new Set(existing.columns);
+  for (const c of incoming.columns) colSet.add(c);
+  const columns = [...colSet];
+
+  // Re-run duplicate computername detection across merged set
+  const cnCounts = new Map<string, number>();
+  for (const row of allRows) {
+    const cn = row.computername.toLowerCase();
+    if (cn) cnCounts.set(cn, (cnCounts.get(cn) ?? 0) + 1);
+  }
+  for (const row of allRows) {
+    const isDup = row.computername && (cnCounts.get(row.computername.toLowerCase()) ?? 0) > 1;
+    const hadDup = row.exceptions.includes("Duplicate computername");
+    if (isDup && !hadDup) {
+      row.exceptions = [...row.exceptions, "Duplicate computername"];
+    } else if (!isDup && hadDup) {
+      row.exceptions = row.exceptions.filter((e) => e !== "Duplicate computername");
+    }
+  }
+
+  return {
+    rows: allRows,
+    columns,
+    filename: [existing.filename, incoming.filename].join(", "),
     loadedAt: new Date().toISOString(),
   };
 }

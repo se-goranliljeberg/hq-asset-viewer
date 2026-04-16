@@ -5,6 +5,7 @@ export interface AssetRow {
   user: string;
   raw: Record<string, string>;
   exceptions: string[];
+  sourceFile: string;
 }
 
 export interface AssetData {

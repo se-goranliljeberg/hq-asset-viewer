@@ -30,7 +30,7 @@ const EDITABLE_COLS = ["Status", "Warranty until"] as const;
 export function AssetTable({ rows, columns, sort, onSort, edits, onEdit }: Props) {
   const parentRef = useRef<HTMLDivElement>(null);
   const displayCols = useMemo(
-    () => [...columns, ...EDITABLE_COLS, "Exceptions"],
+    () => [...columns, ...EDITABLE_COLS, "Exceptions", "Source file"],
     [columns],
   );
 
@@ -191,7 +191,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit }: Props
                   }
 
                   const val =
-                    col === "Exceptions" ? row.exceptions.join(", ") : (row.raw[col] ?? "");
+                    col === "Exceptions" ? row.exceptions.join(", ") : col === "Source file" ? row.sourceFile : (row.raw[col] ?? "");
                   return (
                     <div
                       key={col}
