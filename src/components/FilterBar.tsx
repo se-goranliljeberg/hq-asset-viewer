@@ -10,18 +10,22 @@ interface Props {
   onModelFilter: (v: string) => void;
   userFilter: string;
   onUserFilter: (v: string) => void;
+  sourceFilter: string;
+  onSourceFilter: (v: string) => void;
   exceptionsOnly: boolean;
   onExceptionsOnly: (v: boolean) => void;
   models: string[];
   users: string[];
+  sources: string[];
 }
 
 export function FilterBar({
   search, onSearch,
   modelFilter, onModelFilter,
   userFilter, onUserFilter,
+  sourceFilter, onSourceFilter,
   exceptionsOnly, onExceptionsOnly,
-  models, users,
+  models, users, sources,
 }: Props) {
   return (
     <div className="flex flex-wrap items-center gap-3">
@@ -58,6 +62,20 @@ export function FilterBar({
           ))}
         </SelectContent>
       </Select>
+
+      {sources.length > 1 && (
+        <Select value={sourceFilter} onValueChange={onSourceFilter}>
+          <SelectTrigger className="w-[200px]">
+            <SelectValue placeholder="All Sources" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">All Sources</SelectItem>
+            {sources.map((s) => (
+              <SelectItem key={s} value={s}>{s}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
 
       <div className="flex items-center gap-2">
         <Switch checked={exceptionsOnly} onCheckedChange={onExceptionsOnly} />
