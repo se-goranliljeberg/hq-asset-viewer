@@ -1,6 +1,7 @@
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Search } from "lucide-react";
 
 interface Props {
@@ -77,10 +78,15 @@ export function FilterBar({
         </Select>
       )}
 
-      <div className="flex items-center gap-2">
-        <Switch checked={exceptionsOnly} onCheckedChange={onExceptionsOnly} />
-        <span className="text-sm text-muted-foreground whitespace-nowrap">Exceptions only</span>
-      </div>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="flex items-center gap-2">
+            <Switch checked={exceptionsOnly} onCheckedChange={onExceptionsOnly} />
+            <span className="text-sm text-muted-foreground whitespace-nowrap">Exceptions only</span>
+          </div>
+        </TooltipTrigger>
+        <TooltipContent>Show only rows with data quality issues</TooltipContent>
+      </Tooltip>
     </div>
   );
 }

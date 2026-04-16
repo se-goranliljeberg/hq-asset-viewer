@@ -304,21 +304,41 @@ export function AssetViewer() {
               </Tooltip>
 
               <input ref={fileRef} type="file" accept=".xlsx,.xls" onChange={onFileChange} className="hidden" />
-              <Button size="sm" onClick={() => fileRef.current?.click()}>
-                <Upload className="h-4 w-4 mr-1" />
-                {data ? "Replace Data" : "Load Excel"}
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button size="sm" onClick={() => fileRef.current?.click()}>
+                    <Upload className="h-4 w-4 mr-1" />
+                    {data ? "Replace Data" : "Load Excel"}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Import an Excel file (.xlsx / .xls)</TooltipContent>
+              </Tooltip>
               {data && (
                 <>
-                  <Button size="sm" variant="outline" onClick={() => setAddRowOpen(true)}>
-                    <Plus className="h-4 w-4 mr-1" /> Add Row
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => exportCSV(filtered, columns, edits)}>
-                    <Download className="h-4 w-4 mr-1" /> Export CSV
-                  </Button>
-                  <Button size="sm" variant="destructive" onClick={() => setConfirmClear(true)}>
-                    <Trash2 className="h-4 w-4 mr-1" /> Clear
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button size="sm" variant="outline" onClick={() => setAddRowOpen(true)}>
+                        <Plus className="h-4 w-4 mr-1" /> Add Row
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Manually add a new asset row</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button size="sm" variant="outline" onClick={() => exportCSV(filtered, columns, edits)}>
+                        <Download className="h-4 w-4 mr-1" /> Export CSV
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Export filtered rows as CSV file</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button size="sm" variant="destructive" onClick={() => setConfirmClear(true)}>
+                        <Trash2 className="h-4 w-4 mr-1" /> Clear
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Remove all loaded data from browser</TooltipContent>
+                  </Tooltip>
                 </>
               )}
             </div>
@@ -346,6 +366,13 @@ export function AssetViewer() {
                 />
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>{filtered.length.toLocaleString()} of {rows.length.toLocaleString()} rows</span>
+                  <span className="hidden sm:flex items-center gap-3 text-muted-foreground/70">
+                    <span>💡 Double-click a cell to edit</span>
+                    <span>·</span>
+                    <span>☑ Use checkboxes for batch status changes</span>
+                    <span>·</span>
+                    <span>↕ Click column headers to sort</span>
+                  </span>
                 </div>
                 {selectedIds.size > 0 && (
                   <div className="flex items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-2">
