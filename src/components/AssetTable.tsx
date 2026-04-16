@@ -10,6 +10,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { CalendarIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format, parseISO } from "date-fns";
@@ -21,13 +22,16 @@ interface Props {
   onSort: (col: string) => void;
   edits: Record<string, AssetEdits>;
   onEdit: (rowId: number, field: keyof AssetEdits, value: string) => void;
+  selectedIds: Set<number>;
+  onSelectionChange: (ids: Set<number>) => void;
 }
 
 const MIN_COL_W = 80;
 const DEFAULT_COL_W = 160;
+const CHECKBOX_COL_W = 40;
 const EDITABLE_COLS = ["Status", "Warranty until"] as const;
 
-export function AssetTable({ rows, columns, sort, onSort, edits, onEdit }: Props) {
+export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, selectedIds, onSelectionChange }: Props) {
   const parentRef = useRef<HTMLDivElement>(null);
   const displayCols = useMemo(
     () => [...columns, ...EDITABLE_COLS, "Exceptions", "Source file"],
@@ -41,7 +45,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit }: Props
   });
 
   const totalWidth = useMemo(
-    () => displayCols.reduce((s, c) => s + (colWidths[c] ?? DEFAULT_COL_W), 0),
+    () => CHECKBOX_COL_W + displayCols.reduce((s, c) => s + (colWidths[c] ?? DEFAULT_COL_W), 0),
     [displayCols, colWidths],
   );
 
@@ -51,6 +55,24 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit }: Props
     estimateSize: () => 36,
     overscan: 20,
   });
+
+  const allSelected = rows.length > 0 && selectedIds.size === rows.length;
+  const someSelected = selectedIds.size > 0 && !allSelected;
+
+  const handleSelectAll = useCallback(() => {
+    if (allSelected) {
+      onSelectionChange(new Set());
+    } else {
+      onSelectionChange(new Set(rows.map((r) => r.id)));
+    }
+  }, [allSelected, rows, onSelectionChange]);
+
+  const handleSelectRow = useCallback((rowId: number) => {
+    const next = new Set(selectedIds);
+    if (next.has(rowId)) next.delete(rowId);
+    else next.add(rowId);
+    onSelectionChange(next);
+  }, [selectedIds, onSelectionChange]);
 
   const onResizeStart = useCallback(
     (col: string, startX: number) => {
@@ -82,6 +104,17 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit }: Props
       <div style={{ minWidth: totalWidth }}>
         {/* Sticky header */}
         <div className="sticky top-0 z-10 flex bg-muted/80 backdrop-blur-sm border-b border-border">
+          {/* Checkbox column header */}
+          <div
+            className="flex items-center justify-center px-1 py-2.5"
+            style={{ width: CHECKBOX_COL_W, minWidth: CHECKBOX_COL_W }}
+          >
+            <Checkbox
+              checked={allSelected ? true : someSelected ? "indeterminate" : false}
+              onCheckedChange={handleSelectAll}
+              aria-label="Select all"
+            />
+          </div>
           {displayCols.map((col) => (
             <div
               key={col}
@@ -114,16 +147,19 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit }: Props
             const hasEx = row.exceptions.length > 0;
             const editKey = getEditKey(row.id);
             const rowEdits = edits[editKey];
+            const isSelected = selectedIds.has(row.id);
 
             return (
               <div
                 key={row.id}
                 className={`absolute left-0 flex items-center text-sm ${
-                  hasEx
-                    ? "bg-destructive/5"
-                    : isOdd
-                      ? "bg-muted/30"
-                      : "bg-transparent"
+                  isSelected
+                    ? "bg-primary/10"
+                    : hasEx
+                      ? "bg-destructive/5"
+                      : isOdd
+                        ? "bg-muted/30"
+                        : "bg-transparent"
                 }`}
                 style={{
                   top: vRow.start,
@@ -131,6 +167,17 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit }: Props
                   width: "100%",
                 }}
               >
+                {/* Checkbox */}
+                <div
+                  className="flex items-center justify-center px-1"
+                  style={{ width: CHECKBOX_COL_W, minWidth: CHECKBOX_COL_W }}
+                >
+                  <Checkbox
+                    checked={isSelected}
+                    onCheckedChange={() => handleSelectRow(row.id)}
+                    aria-label={`Select ${row.computername}`}
+                  />
+                </div>
                 {displayCols.map((col) => {
                   const w = colWidths[col] ?? DEFAULT_COL_W;
 
