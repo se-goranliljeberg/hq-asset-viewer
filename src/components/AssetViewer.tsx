@@ -19,7 +19,9 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Upload, Trash2, Download, ShieldCheck, RefreshCw } from "lucide-react";
+import { Upload, Trash2, Download, ShieldCheck, RefreshCw, Plus } from "lucide-react";
+import { AddRowDialog } from "./AddRowDialog";
+import type { AssetStatus } from "@/lib/asset-edits";
 import { toast } from "sonner";
 
 function useStickyState() {
@@ -54,6 +56,7 @@ export function AssetViewer() {
   const [sheetPickerOpen, setSheetPickerOpen] = useState(false);
   const [pendingSheets, setPendingSheets] = useState<string[]>([]);
   const [importModeOpen, setImportModeOpen] = useState(false);
+  const [addRowOpen, setAddRowOpen] = useState(false);
   const pendingBuffer = useRef<ArrayBuffer | null>(null);
   const pendingFilename = useRef("");
   const pendingParsed = useRef<AssetData | null>(null);
@@ -110,6 +113,38 @@ export function AssetViewer() {
       toast.success(`Added ${pendingParsed.current.rows.length} rows (total: ${merged.rows.length})`);
       pendingParsed.current = null;
     }
+  }, [data, setData]);
+
+
+  const handleAddRow = useCallback((raw: Record<string, string>, status: AssetStatus, warrantyUntil: string) => {
+    if (!data) return;
+    const newId = Math.max(...data.rows.map((r) => r.id), 0) + 1;
+    const cnKey = Object.keys(raw).find((k) => k.toLowerCase() === "computername") ?? "";
+    const modelKey = Object.keys(raw).find((k) => k.toLowerCase() === "modell") ?? "";
+    const userKey = Object.keys(raw).find((k) => k.toLowerCase() === "user") ?? "";
+    const computername = cnKey ? (raw[cnKey] ?? "").trim() : "";
+    const modell = modelKey ? (raw[modelKey] ?? "").trim() : "";
+    const user = userKey ? (raw[userKey] ?? "").trim() : "";
+    const exceptions: string[] = [];
+    if (!computername) exceptions.push("Missing Computername");
+    if (!user) exceptions.push("Missing User");
+    if (!modell) exceptions.push("Missing Modell");
+    // Check for duplicate computername
+    if (computername && data.rows.some((r) => r.computername.toLowerCase() === computername.toLowerCase())) {
+      exceptions.push("Duplicate Computername (cross-file)");
+    }
+    const newRow: AssetRow = { id: newId, computername, modell, user, raw, exceptions, sourceFile: "Manual entry" };
+    const updatedData: AssetData = { ...data, rows: [...data.rows, newRow] };
+    setData(updatedData);
+    // Save status/warranty as edits
+    if (status || warrantyUntil) {
+      setEditsState((prev) => {
+        const next = { ...prev, [String(newId)]: { status, warrantyUntil } };
+        saveEdits(next);
+        return next;
+      });
+    }
+    toast.success(`Added manual row "${computername || "Unnamed"}"`);
   }, [data, setData]);
 
   const handleFile = useCallback(async (file: File) => {
@@ -177,6 +212,12 @@ export function AssetViewer() {
     () => [...new Set(rows.map((r) => r.sourceFile).filter(Boolean))].sort(),
     [rows],
   );
+
+  const hasManualOrEdits = useMemo(() => {
+    const hasEditsVal = Object.values(edits).some((e) => e.status !== "" || e.warrantyUntil !== "");
+    const hasManual = rows.some((r) => r.sourceFile === "Manual entry");
+    return hasEditsVal || hasManual;
+  }, [edits, rows]);
 
   const filtered = useMemo(() => {
     let result = rows;
@@ -248,6 +289,9 @@ export function AssetViewer() {
               </Button>
               {data && (
                 <>
+                  <Button size="sm" variant="outline" onClick={() => setAddRowOpen(true)}>
+                    <Plus className="h-4 w-4 mr-1" /> Add Row
+                  </Button>
                   <Button size="sm" variant="outline" onClick={() => exportCSV(filtered, columns, edits)}>
                     <Download className="h-4 w-4 mr-1" /> Export CSV
                   </Button>
@@ -318,6 +362,11 @@ export function AssetViewer() {
               <AlertDialogTitle>Clear all local data?</AlertDialogTitle>
               <AlertDialogDescription>
                 This will permanently delete the loaded asset data and any edits from your browser.
+                {hasManualOrEdits && (
+                  <span className="block mt-2 font-semibold text-destructive">
+                    ⚠ You have manual entries or edits that will be lost.
+                  </span>
+                )}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -340,6 +389,11 @@ export function AssetViewer() {
               <AlertDialogTitle>Data already loaded</AlertDialogTitle>
               <AlertDialogDescription>
                 Would you like to replace all existing data or add the new rows to the current dataset? Duplicates will be flagged as exceptions.
+                {hasManualOrEdits && (
+                  <span className="block mt-2 font-semibold text-destructive">
+                    ⚠ Replacing will discard your manual entries and edits.
+                  </span>
+                )}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -353,6 +407,13 @@ export function AssetViewer() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        <AddRowDialog
+          open={addRowOpen}
+          onOpenChange={setAddRowOpen}
+          columns={columns}
+          onSave={handleAddRow}
+        />
       </div>
     </TooltipProvider>
   );
