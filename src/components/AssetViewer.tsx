@@ -66,6 +66,7 @@ export function AssetViewer() {
   const pendingBuffer = useRef<ArrayBuffer | null>(null);
   const pendingFilename = useRef("");
   const pendingParsed = useRef<AssetData | null>(null);
+  const pendingSeedEdits = useRef<Record<string, AssetEdits>>({});
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
