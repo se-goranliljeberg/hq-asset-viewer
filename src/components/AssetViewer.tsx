@@ -170,7 +170,7 @@ export function AssetViewer() {
     [rows],
   );
   const users = useMemo(
-    () => [...new Set(rows.map((r) => r.user).filter(Boolean))].sort(),
+    () => [...new Set(rows.map((r) => r.user).filter(Boolean))].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" })),
     [rows],
   );
   const sources = useMemo(
