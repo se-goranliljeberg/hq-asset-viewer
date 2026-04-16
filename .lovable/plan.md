@@ -1,39 +1,35 @@
 
 
-# Add Data / Replace Data Upload + Source File Column
+# Source File Filter + Audit Dashboard
 
 ## Overview
-When uploading a new file while data already exists, show a dialog asking "Replace all data" or "Add data". Track which file each row came from. Detect cross-file duplicate computernames as exceptions.
+Two additions: (1) a "Source file" dropdown in the filter bar, and (2) a tabbed audit dashboard view with summary charts and status breakdown, all client-side.
 
 ## Changes
 
-### 1. `src/lib/asset-types.ts` — Add `sourceFile` field
-- Add `sourceFile: string` to `AssetRow`
+### 1. Source file filter — `FilterBar.tsx` + `AssetViewer.tsx`
+- Add `sourceFilter` / `onSourceFilter` / `sources: string[]` props to FilterBar
+- Add a new Select dropdown: "All Sources" / per-file options
+- In AssetViewer, derive `sources` from `[...new Set(rows.map(r => r.sourceFile))]`, add `sourceFilter` state, apply it in the `filtered` memo
 
-### 2. `src/lib/excel-parser.ts` — Store source filename per row
-- Set `sourceFile: filename` on each parsed `AssetRow`
-- Export a new `mergeData(existing: AssetData, incoming: AssetData): AssetData` function that:
-  - Combines rows from both datasets, re-indexing IDs to avoid collisions
-  - Merges column sets (union of both)
-  - Re-runs duplicate computername detection across all combined rows, adding "Duplicate computername" exception where needed
-  - Sets filename to comma-joined list and loadedAt to current time
+### 2. Audit Dashboard — new `AuditDashboard.tsx` component
+A tab-switchable view (Table / Audit) above the main content area, using Tabs from shadcn. The Audit tab shows:
 
-### 3. `src/components/AssetViewer.tsx` — Add/Replace dialog
-- Add state for `importMode: "replace" | "add" | null` and refs for pending parsed data
-- When a file is uploaded and data already exists, show an AlertDialog: "Replace all data" or "Add to existing data"
-- On "Replace": behave as before (overwrite)
-- On "Add": call `mergeData(existingData, newData)` and save the merged result
-- The "Source file" column is automatically shown via the table's `columns` list (it comes from `raw`)
+- **Status breakdown**: Card grid showing count of "In stock", "Deployed at user", "Sent back to broker", and "No status set"
+- **Warranty overview**: Cards for "Expired" (warranty date < today), "Expiring in 30 days", "Valid", "No warranty set"
+- **Per-source-file summary**: Table showing each source file with row count, exception count, and status distribution
+- **Exceptions summary**: Top exceptions by frequency (grouped and counted)
 
-### 4. `src/components/AssetTable.tsx` — Display source file column
-- The "Source file" column will be appended to `displayCols` as a virtual column (like Exceptions)
-- Render `row.sourceFile` for that column
+All computed client-side from `rows` + `edits`. Uses existing Card, Table, and Badge components.
 
-### 5. `src/lib/csv-export.ts` — Include source file in export
-- Add "Source file" to the exported columns, pulling from `row.sourceFile`
+### 3. Wire up in `AssetViewer.tsx`
+- Add a Tabs component wrapping the existing table view and the new audit view
+- "Asset List" tab shows existing FilterBar + AssetTable
+- "Audit Report" tab shows AuditDashboard
+- Both tabs share the same KPI cards at the top
 
-## Technical Notes
-- Row IDs for merged data: existing rows keep their IDs, new rows get IDs starting from `max(existing) + 1`
-- Duplicate detection runs across the full merged dataset
-- Column union ensures rows from different files with different columns still display correctly (missing values show as empty)
+### Files modified
+- `src/components/FilterBar.tsx` — add source file dropdown
+- `src/components/AssetViewer.tsx` — add sourceFilter state, derive sources list, add Tabs for table/audit toggle
+- `src/components/AuditDashboard.tsx` — new file with audit report cards and tables
 
