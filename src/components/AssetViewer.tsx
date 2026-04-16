@@ -9,9 +9,11 @@ import { KpiCards } from "./KpiCards";
 import type { KpiKey } from "./KpiCards";
 import { FilterBar } from "./FilterBar";
 import { AssetTable } from "./AssetTable";
+import { AuditDashboard } from "./AuditDashboard";
 import { SheetPicker } from "./SheetPicker";
 import { PrivacyFooter } from "./PrivacyFooter";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -44,6 +46,7 @@ export function AssetViewer() {
   const [search, setSearch] = useState("");
   const [modelFilter, setModelFilter] = useState("__all__");
   const [userFilter, setUserFilter] = useState("__all__");
+  const [sourceFilter, setSourceFilter] = useState("__all__");
   const [exceptionsOnly, setExceptionsOnly] = useState(false);
   const [activeCard, setActiveCard] = useState<KpiKey | null>(null);
   const [sort, setSort] = useState<SortState>({ column: "", dir: null });
@@ -144,6 +147,7 @@ export function AssetViewer() {
     setSearch("");
     setModelFilter("__all__");
     setUserFilter("__all__");
+    setSourceFilter("__all__");
     setExceptionsOnly(false);
     setSort({ column: "", dir: null });
     setConfirmClear(false);
@@ -169,6 +173,10 @@ export function AssetViewer() {
     () => [...new Set(rows.map((r) => r.user).filter(Boolean))].sort(),
     [rows],
   );
+  const sources = useMemo(
+    () => [...new Set(rows.map((r) => r.sourceFile).filter(Boolean))].sort(),
+    [rows],
+  );
 
   const filtered = useMemo(() => {
     let result = rows;
@@ -178,6 +186,7 @@ export function AssetViewer() {
     if (exceptionsOnly && activeCard !== "exceptions") result = result.filter((r) => r.exceptions.length > 0);
     if (modelFilter !== "__all__") result = result.filter((r) => r.modell === modelFilter);
     if (userFilter !== "__all__") result = result.filter((r) => r.user === userFilter);
+    if (sourceFilter !== "__all__") result = result.filter((r) => r.sourceFile === sourceFilter);
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       result = result.filter((r) =>
@@ -206,7 +215,7 @@ export function AssetViewer() {
       });
     }
     return result;
-  }, [rows, columns, search, modelFilter, userFilter, exceptionsOnly, activeCard, sort, edits]);
+  }, [rows, columns, search, modelFilter, userFilter, sourceFilter, exceptionsOnly, activeCard, sort, edits]);
 
   return (
     <TooltipProvider>
@@ -254,24 +263,40 @@ export function AssetViewer() {
         {data ? (
           <div className="flex flex-1 flex-col gap-4 overflow-hidden px-6 py-4">
             <KpiCards rows={rows} activeCard={activeCard} onCardClick={handleCardClick} />
-            <FilterBar
-              search={search} onSearch={setSearch}
-              modelFilter={modelFilter} onModelFilter={setModelFilter}
-              userFilter={userFilter} onUserFilter={setUserFilter}
-              exceptionsOnly={exceptionsOnly} onExceptionsOnly={setExceptionsOnly}
-              models={models} users={users}
-            />
-            <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span>{filtered.length.toLocaleString()} of {rows.length.toLocaleString()} rows</span>
-            </div>
-            <AssetTable
-              rows={filtered}
-              columns={columns}
-              sort={sort}
-              onSort={toggleSort}
-              edits={edits}
-              onEdit={handleEdit}
-            />
+
+            <Tabs defaultValue="table" className="flex flex-1 flex-col overflow-hidden">
+              <TabsList className="w-fit">
+                <TabsTrigger value="table">Asset List</TabsTrigger>
+                <TabsTrigger value="audit">Audit Report</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="table" className="flex flex-1 flex-col gap-4 overflow-hidden mt-4">
+                <FilterBar
+                  search={search} onSearch={setSearch}
+                  modelFilter={modelFilter} onModelFilter={setModelFilter}
+                  userFilter={userFilter} onUserFilter={setUserFilter}
+                  sourceFilter={sourceFilter} onSourceFilter={setSourceFilter}
+                  exceptionsOnly={exceptionsOnly} onExceptionsOnly={setExceptionsOnly}
+                  models={models} users={users} sources={sources}
+                />
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>{filtered.length.toLocaleString()} of {rows.length.toLocaleString()} rows</span>
+                </div>
+                <AssetTable
+                  rows={filtered}
+                  columns={columns}
+                  sort={sort}
+                  onSort={toggleSort}
+                  edits={edits}
+                  onEdit={handleEdit}
+                />
+              </TabsContent>
+
+              <TabsContent value="audit" className="flex-1 overflow-auto mt-4">
+                <AuditDashboard rows={rows} edits={edits} />
+              </TabsContent>
+            </Tabs>
+
             <PrivacyFooter />
           </div>
         ) : (
