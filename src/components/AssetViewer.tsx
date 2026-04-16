@@ -205,6 +205,7 @@ export function AssetViewer() {
     setModelFilter("__all__");
     setUserFilter("__all__");
     setSourceFilter("__all__");
+    setStatusFilter("__all__");
     setExceptionsOnly(false);
     setSort({ column: "", dir: null });
     setConfirmClear(false);
