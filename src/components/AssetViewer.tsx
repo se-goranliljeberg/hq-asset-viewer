@@ -126,7 +126,11 @@ export function AssetViewer() {
 
   const filtered = useMemo(() => {
     let result = rows;
-    if (exceptionsOnly) result = result.filter((r) => r.exceptions.length > 0);
+    // Card-based filters
+    if (activeCard === "exceptions") result = result.filter((r) => r.exceptions.length > 0);
+    else if (activeCard === "users") result = result.filter((r) => r.user !== "");
+    else if (activeCard === "models") result = result.filter((r) => r.modell !== "");
+    if (exceptionsOnly && activeCard !== "exceptions") result = result.filter((r) => r.exceptions.length > 0);
     if (modelFilter !== "__all__") result = result.filter((r) => r.modell === modelFilter);
     if (userFilter !== "__all__") result = result.filter((r) => r.user === userFilter);
     if (search.trim()) {
@@ -145,7 +149,7 @@ export function AssetViewer() {
       });
     }
     return result;
-  }, [rows, columns, search, modelFilter, userFilter, exceptionsOnly, sort]);
+  }, [rows, columns, search, modelFilter, userFilter, exceptionsOnly, activeCard, sort]);
 
   return (
     <TooltipProvider>
@@ -194,7 +198,7 @@ export function AssetViewer() {
         {/* Body */}
         {data ? (
           <div className="flex flex-1 flex-col gap-4 overflow-hidden px-6 py-4">
-            <KpiCards rows={rows} />
+            <KpiCards rows={rows} activeCard={activeCard} onCardClick={handleCardClick} />
             <FilterBar
               search={search} onSearch={setSearch}
               modelFilter={modelFilter} onModelFilter={setModelFilter}
