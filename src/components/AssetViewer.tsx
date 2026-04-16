@@ -115,6 +115,43 @@ export function AssetViewer() {
     }
   }, [data, setData]);
 
+  const hasManualOrEdits = useMemo(() => {
+    const hasEdits = Object.values(edits).some((e) => e.status !== "" || e.warrantyUntil !== "");
+    const hasManual = rows.some((r) => r.sourceFile === "Manual entry");
+    return hasEdits || hasManual;
+  }, [edits, rows]);
+
+  const handleAddRow = useCallback((raw: Record<string, string>, status: AssetStatus, warrantyUntil: string) => {
+    if (!data) return;
+    const newId = Math.max(...data.rows.map((r) => r.id), 0) + 1;
+    const cnKey = Object.keys(raw).find((k) => k.toLowerCase() === "computername") ?? "";
+    const modelKey = Object.keys(raw).find((k) => k.toLowerCase() === "modell") ?? "";
+    const userKey = Object.keys(raw).find((k) => k.toLowerCase() === "user") ?? "";
+    const computername = cnKey ? (raw[cnKey] ?? "").trim() : "";
+    const modell = modelKey ? (raw[modelKey] ?? "").trim() : "";
+    const user = userKey ? (raw[userKey] ?? "").trim() : "";
+    const exceptions: string[] = [];
+    if (!computername) exceptions.push("Missing Computername");
+    if (!user) exceptions.push("Missing User");
+    if (!modell) exceptions.push("Missing Modell");
+    // Check for duplicate computername
+    if (computername && data.rows.some((r) => r.computername.toLowerCase() === computername.toLowerCase())) {
+      exceptions.push("Duplicate Computername (cross-file)");
+    }
+    const newRow: AssetRow = { id: newId, computername, modell, user, raw, exceptions, sourceFile: "Manual entry" };
+    const updatedData: AssetData = { ...data, rows: [...data.rows, newRow] };
+    setData(updatedData);
+    // Save status/warranty as edits
+    if (status || warrantyUntil) {
+      setEditsState((prev) => {
+        const next = { ...prev, [String(newId)]: { status, warrantyUntil } };
+        saveEdits(next);
+        return next;
+      });
+    }
+    toast.success(`Added manual row "${computername || "Unnamed"}"`);
+  }, [data, setData]);
+
   const handleFile = useCallback(async (file: File) => {
     const buffer = await file.arrayBuffer();
     const sheets = getSheetNames(buffer);
@@ -251,6 +288,9 @@ export function AssetViewer() {
               </Button>
               {data && (
                 <>
+                  <Button size="sm" variant="outline" onClick={() => setAddRowOpen(true)}>
+                    <Plus className="h-4 w-4 mr-1" /> Add Row
+                  </Button>
                   <Button size="sm" variant="outline" onClick={() => exportCSV(filtered, columns, edits)}>
                     <Download className="h-4 w-4 mr-1" /> Export CSV
                   </Button>
