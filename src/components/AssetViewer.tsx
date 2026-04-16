@@ -1,9 +1,12 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import type { AssetData, AssetRow, SortState } from "@/lib/asset-types";
+import type { AssetEdits } from "@/lib/asset-edits";
 import { saveData, loadData, clearData } from "@/lib/asset-store";
+import { loadEdits, saveEdits, clearEdits, getEditKey } from "@/lib/asset-edits";
 import { getSheetNames, parseSheet } from "@/lib/excel-parser";
 import { exportCSV } from "@/lib/csv-export";
 import { KpiCards } from "./KpiCards";
+import type { KpiKey } from "./KpiCards";
 import { FilterBar } from "./FilterBar";
 import { AssetTable } from "./AssetTable";
 import { SheetPicker } from "./SheetPicker";
@@ -37,11 +40,12 @@ function useStickyState() {
 
 export function AssetViewer() {
   const [data, setData, hydrated] = useStickyState();
+  const [edits, setEditsState] = useState<Record<string, AssetEdits>>({});
   const [search, setSearch] = useState("");
   const [modelFilter, setModelFilter] = useState("__all__");
   const [userFilter, setUserFilter] = useState("__all__");
   const [exceptionsOnly, setExceptionsOnly] = useState(false);
-  const [activeCard, setActiveCard] = useState<import("./KpiCards").KpiKey | null>(null);
+  const [activeCard, setActiveCard] = useState<KpiKey | null>(null);
   const [sort, setSort] = useState<SortState>({ column: "", dir: null });
   const [confirmClear, setConfirmClear] = useState(false);
   const [sheetPickerOpen, setSheetPickerOpen] = useState(false);
@@ -50,8 +54,21 @@ export function AssetViewer() {
   const pendingFilename = useRef("");
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const handleCardClick = useCallback((key: import("./KpiCards").KpiKey) => {
-    // Toggle off if clicking same card
+  useEffect(() => {
+    setEditsState(loadEdits());
+  }, []);
+
+  const handleEdit = useCallback((rowId: number, field: keyof AssetEdits, value: string) => {
+    setEditsState((prev) => {
+      const key = getEditKey(rowId);
+      const current = prev[key] ?? { status: "", warrantyUntil: "" };
+      const next = { ...prev, [key]: { ...current, [field]: value } };
+      saveEdits(next);
+      return next;
+    });
+  }, []);
+
+  const handleCardClick = useCallback((key: KpiKey) => {
     if (activeCard === key) {
       setActiveCard(null);
       setExceptionsOnly(false);
@@ -94,7 +111,9 @@ export function AssetViewer() {
 
   const handleClear = useCallback(() => {
     clearData();
+    clearEdits();
     setData(null);
+    setEditsState({});
     setSearch("");
     setModelFilter("__all__");
     setUserFilter("__all__");
@@ -126,7 +145,6 @@ export function AssetViewer() {
 
   const filtered = useMemo(() => {
     let result = rows;
-    // Card-based filters
     if (activeCard === "exceptions") result = result.filter((r) => r.exceptions.length > 0);
     else if (activeCard === "users") result = result.filter((r) => r.user !== "");
     else if (activeCard === "models") result = result.filter((r) => r.modell !== "");
@@ -143,18 +161,29 @@ export function AssetViewer() {
       const col = sort.column;
       const dir = sort.dir === "asc" ? 1 : -1;
       result = [...result].sort((a, b) => {
-        const va = col === "Exceptions" ? a.exceptions.join(", ") : (a.raw[col] ?? "");
-        const vb = col === "Exceptions" ? b.exceptions.join(", ") : (b.raw[col] ?? "");
+        let va: string, vb: string;
+        if (col === "Exceptions") {
+          va = a.exceptions.join(", ");
+          vb = b.exceptions.join(", ");
+        } else if (col === "Status") {
+          va = edits[getEditKey(a.id)]?.status ?? "";
+          vb = edits[getEditKey(b.id)]?.status ?? "";
+        } else if (col === "Warranty until") {
+          va = edits[getEditKey(a.id)]?.warrantyUntil ?? "";
+          vb = edits[getEditKey(b.id)]?.warrantyUntil ?? "";
+        } else {
+          va = a.raw[col] ?? "";
+          vb = b.raw[col] ?? "";
+        }
         return va.localeCompare(vb, undefined, { numeric: true, sensitivity: "base" }) * dir;
       });
     }
     return result;
-  }, [rows, columns, search, modelFilter, userFilter, exceptionsOnly, activeCard, sort]);
+  }, [rows, columns, search, modelFilter, userFilter, exceptionsOnly, activeCard, sort, edits]);
 
   return (
     <TooltipProvider>
       <div className="flex h-screen flex-col bg-background text-foreground">
-        {/* Header */}
         <header className="shrink-0 border-b border-border px-6 py-4">
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div>
@@ -183,7 +212,7 @@ export function AssetViewer() {
               </Button>
               {data && (
                 <>
-                  <Button size="sm" variant="outline" onClick={() => exportCSV(filtered, columns)}>
+                  <Button size="sm" variant="outline" onClick={() => exportCSV(filtered, columns, edits)}>
                     <Download className="h-4 w-4 mr-1" /> Export CSV
                   </Button>
                   <Button size="sm" variant="destructive" onClick={() => setConfirmClear(true)}>
@@ -195,7 +224,6 @@ export function AssetViewer() {
           </div>
         </header>
 
-        {/* Body */}
         {data ? (
           <div className="flex flex-1 flex-col gap-4 overflow-hidden px-6 py-4">
             <KpiCards rows={rows} activeCard={activeCard} onCardClick={handleCardClick} />
@@ -209,7 +237,14 @@ export function AssetViewer() {
             <div className="flex items-center justify-between text-xs text-muted-foreground">
               <span>{filtered.length.toLocaleString()} of {rows.length.toLocaleString()} rows</span>
             </div>
-            <AssetTable rows={filtered} columns={columns} sort={sort} onSort={toggleSort} />
+            <AssetTable
+              rows={filtered}
+              columns={columns}
+              sort={sort}
+              onSort={toggleSort}
+              edits={edits}
+              onEdit={handleEdit}
+            />
             <PrivacyFooter />
           </div>
         ) : (
@@ -225,13 +260,12 @@ export function AssetViewer() {
           </div>
         )}
 
-        {/* Clear confirmation */}
         <AlertDialog open={confirmClear} onOpenChange={setConfirmClear}>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Clear all local data?</AlertDialogTitle>
               <AlertDialogDescription>
-                This will permanently delete the loaded asset data from your browser. This action cannot be undone.
+                This will permanently delete the loaded asset data and any edits from your browser.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -241,7 +275,6 @@ export function AssetViewer() {
           </AlertDialogContent>
         </AlertDialog>
 
-        {/* Sheet picker */}
         <SheetPicker
           open={sheetPickerOpen}
           sheets={pendingSheets}
