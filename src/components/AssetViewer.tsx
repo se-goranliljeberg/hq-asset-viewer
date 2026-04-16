@@ -36,11 +36,12 @@ function useStickyState() {
 }
 
 export function AssetViewer() {
-  const [data, setData] = useStickyState();
+  const [data, setData, hydrated] = useStickyState();
   const [search, setSearch] = useState("");
   const [modelFilter, setModelFilter] = useState("__all__");
   const [userFilter, setUserFilter] = useState("__all__");
   const [exceptionsOnly, setExceptionsOnly] = useState(false);
+  const [activeCard, setActiveCard] = useState<import("./KpiCards").KpiKey | null>(null);
   const [sort, setSort] = useState<SortState>({ column: "", dir: null });
   const [confirmClear, setConfirmClear] = useState(false);
   const [sheetPickerOpen, setSheetPickerOpen] = useState(false);
@@ -48,6 +49,17 @@ export function AssetViewer() {
   const pendingBuffer = useRef<ArrayBuffer | null>(null);
   const pendingFilename = useRef("");
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const handleCardClick = useCallback((key: import("./KpiCards").KpiKey) => {
+    // Toggle off if clicking same card
+    if (activeCard === key) {
+      setActiveCard(null);
+      setExceptionsOnly(false);
+      return;
+    }
+    setActiveCard(key);
+    setExceptionsOnly(key === "exceptions");
+  }, [activeCard]);
 
   const handleFile = useCallback(async (file: File) => {
     const buffer = await file.arrayBuffer();
