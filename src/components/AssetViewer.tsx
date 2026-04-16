@@ -219,7 +219,7 @@ export function AssetViewer() {
     return hasEditsVal || hasManual;
   }, [edits, rows]);
 
-
+  const filtered = useMemo(() => {
     let result = rows;
     if (activeCard === "exceptions") result = result.filter((r) => r.exceptions.length > 0);
     else if (activeCard === "users") result = result.filter((r) => r.user !== "");
