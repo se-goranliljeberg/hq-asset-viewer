@@ -52,6 +52,7 @@ export function AssetViewer() {
   const [exceptionsOnly, setExceptionsOnly] = useState(false);
   const [activeCard, setActiveCard] = useState<KpiKey | null>(null);
   const [sort, setSort] = useState<SortState>({ column: "", dir: null });
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [confirmClear, setConfirmClear] = useState(false);
   const [sheetPickerOpen, setSheetPickerOpen] = useState(false);
   const [pendingSheets, setPendingSheets] = useState<string[]>([]);
