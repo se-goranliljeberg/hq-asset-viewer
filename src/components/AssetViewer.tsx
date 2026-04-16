@@ -12,6 +12,7 @@ import { AssetTable } from "./AssetTable";
 import { SheetPicker } from "./SheetPicker";
 import { PrivacyFooter } from "./PrivacyFooter";
 import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
