@@ -116,13 +116,6 @@ export function AssetViewer() {
   }, [data, setData]);
 
 
-  const hasManualOrEdits = useMemo(() => {
-    const hasEditsVal = Object.values(edits).some((e) => e.status !== "" || e.warrantyUntil !== "");
-    const hasManual = rows.some((r) => r.sourceFile === "Manual entry");
-    return hasEditsVal || hasManual;
-  }, [edits, rows]);
-
-
   const handleAddRow = useCallback((raw: Record<string, string>, status: AssetStatus, warrantyUntil: string) => {
     if (!data) return;
     const newId = Math.max(...data.rows.map((r) => r.id), 0) + 1;
