@@ -366,6 +366,13 @@ export function AssetViewer() {
                 />
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>{filtered.length.toLocaleString()} of {rows.length.toLocaleString()} rows</span>
+                  <span className="hidden sm:flex items-center gap-3 text-muted-foreground/70">
+                    <span>💡 Double-click a cell to edit</span>
+                    <span>·</span>
+                    <span>☑ Use checkboxes for batch status changes</span>
+                    <span>·</span>
+                    <span>↕ Click column headers to sort</span>
+                  </span>
                 </div>
                 {selectedIds.size > 0 && (
                   <div className="flex items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-2">
