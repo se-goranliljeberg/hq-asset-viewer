@@ -19,7 +19,9 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Upload, Trash2, Download, ShieldCheck, RefreshCw } from "lucide-react";
+import { Upload, Trash2, Download, ShieldCheck, RefreshCw, Plus } from "lucide-react";
+import { AddRowDialog } from "./AddRowDialog";
+import type { AssetStatus } from "@/lib/asset-edits";
 import { toast } from "sonner";
 
 function useStickyState() {
