@@ -52,6 +52,7 @@ export function AssetViewer() {
   const [modelFilter, setModelFilter] = useState("__all__");
   const [userFilter, setUserFilter] = useState("__all__");
   const [sourceFilter, setSourceFilter] = useState("__all__");
+  const [statusFilter, setStatusFilter] = useState("__all__");
   const [exceptionsOnly, setExceptionsOnly] = useState(false);
   const [activeCard, setActiveCard] = useState<KpiKey | null>(null);
   const [sort, setSort] = useState<SortState>({ column: "", dir: null });
@@ -249,6 +250,13 @@ export function AssetViewer() {
     if (modelFilter !== "__all__") result = result.filter((r) => r.modell === modelFilter);
     if (userFilter !== "__all__") result = result.filter((r) => r.user === userFilter);
     if (sourceFilter !== "__all__") result = result.filter((r) => r.sourceFile === sourceFilter);
+    if (statusFilter !== "__all__") {
+      if (statusFilter === "__none__") {
+        result = result.filter((r) => !(edits[getEditKey(r.id)]?.status));
+      } else {
+        result = result.filter((r) => edits[getEditKey(r.id)]?.status === statusFilter);
+      }
+    }
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       result = result.filter((r) =>
