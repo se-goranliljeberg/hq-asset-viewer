@@ -4,6 +4,7 @@ import type { AssetEdits, AssetStatus } from "@/lib/asset-edits";
 import { saveData, loadData, clearData } from "@/lib/asset-store";
 import { loadEdits, saveEdits, clearEdits, getEditKey, STATUS_OPTIONS } from "@/lib/asset-edits";
 import { getSheetNames, parseSheet, mergeData } from "@/lib/excel-parser";
+import type { ParseResult } from "@/lib/excel-parser";
 import { exportCSV } from "@/lib/csv-export";
 import { KpiCards } from "./KpiCards";
 import type { KpiKey } from "./KpiCards";
@@ -65,6 +66,7 @@ export function AssetViewer() {
   const pendingBuffer = useRef<ArrayBuffer | null>(null);
   const pendingFilename = useRef("");
   const pendingParsed = useRef<AssetData | null>(null);
+  const pendingSeedEdits = useRef<Record<string, AssetEdits>>({});
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -108,34 +110,50 @@ export function AssetViewer() {
     setExceptionsOnly(key === "exceptions");
   }, [activeCard]);
 
-  const applyParsed = useCallback((parsed: AssetData) => {
+  const applySeedEdits = useCallback((seed: Record<string, AssetEdits>) => {
+    if (Object.keys(seed).length > 0) {
+      setEditsState((prev) => {
+        const next = { ...prev, ...seed };
+        saveEdits(next);
+        return next;
+      });
+    }
+  }, []);
+
+  const applyParsed = useCallback((result: ParseResult) => {
     if (data) {
-      pendingParsed.current = parsed;
+      pendingParsed.current = result.data;
+      pendingSeedEdits.current = result.seedEdits;
       setImportModeOpen(true);
     } else {
-      setData(parsed);
-      toast.success(`Loaded ${parsed.rows.length} rows from "${parsed.filename}"`);
+      setData(result.data);
+      applySeedEdits(result.seedEdits);
+      toast.success(`Loaded ${result.data.rows.length} rows from "${result.data.filename}"`);
     }
-  }, [data, setData]);
+  }, [data, setData, applySeedEdits]);
 
   const handleImportReplace = useCallback(() => {
     setImportModeOpen(false);
     if (pendingParsed.current) {
       setData(pendingParsed.current);
+      applySeedEdits(pendingSeedEdits.current);
       toast.success(`Replaced with ${pendingParsed.current.rows.length} rows`);
       pendingParsed.current = null;
+      pendingSeedEdits.current = {};
     }
-  }, [setData]);
+  }, [setData, applySeedEdits]);
 
   const handleImportAdd = useCallback(() => {
     setImportModeOpen(false);
     if (pendingParsed.current && data) {
       const merged = mergeData(data, pendingParsed.current);
       setData(merged);
+      applySeedEdits(pendingSeedEdits.current);
       toast.success(`Added ${pendingParsed.current.rows.length} rows (total: ${merged.rows.length})`);
       pendingParsed.current = null;
+      pendingSeedEdits.current = {};
     }
-  }, [data, setData]);
+  }, [data, setData, applySeedEdits]);
 
 
   const handleAddRow = useCallback((raw: Record<string, string>, status: AssetStatus, warrantyUntil: string) => {
