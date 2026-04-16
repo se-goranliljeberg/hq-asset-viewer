@@ -111,15 +111,6 @@ export function AssetViewer() {
   }, [activeCard]);
 
   const applyParsed = useCallback((result: ParseResult) => {
-    const applySeedEdits = (seed: Record<string, AssetEdits>) => {
-      if (Object.keys(seed).length > 0) {
-        setEditsState((prev) => {
-          const next = { ...prev, ...seed };
-          saveEdits(next);
-          return next;
-        });
-      }
-    };
     if (data) {
       pendingParsed.current = result.data;
       pendingSeedEdits.current = result.seedEdits;
@@ -129,7 +120,7 @@ export function AssetViewer() {
       applySeedEdits(result.seedEdits);
       toast.success(`Loaded ${result.data.rows.length} rows from "${result.data.filename}"`);
     }
-  }, [data, setData]);
+  }, [data, setData, applySeedEdits]);
 
   const applySeedEdits = useCallback((seed: Record<string, AssetEdits>) => {
     if (Object.keys(seed).length > 0) {
