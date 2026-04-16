@@ -213,7 +213,13 @@ export function AssetViewer() {
     [rows],
   );
 
-  const filtered = useMemo(() => {
+  const hasManualOrEdits = useMemo(() => {
+    const hasEditsVal = Object.values(edits).some((e) => e.status !== "" || e.warrantyUntil !== "");
+    const hasManual = rows.some((r) => r.sourceFile === "Manual entry");
+    return hasEditsVal || hasManual;
+  }, [edits, rows]);
+
+
     let result = rows;
     if (activeCard === "exceptions") result = result.filter((r) => r.exceptions.length > 0);
     else if (activeCard === "users") result = result.filter((r) => r.user !== "");
