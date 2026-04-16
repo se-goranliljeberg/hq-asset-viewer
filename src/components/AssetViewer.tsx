@@ -1,8 +1,8 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import type { AssetData, AssetRow, SortState } from "@/lib/asset-types";
-import type { AssetEdits } from "@/lib/asset-edits";
+import type { AssetEdits, AssetStatus } from "@/lib/asset-edits";
 import { saveData, loadData, clearData } from "@/lib/asset-store";
-import { loadEdits, saveEdits, clearEdits, getEditKey } from "@/lib/asset-edits";
+import { loadEdits, saveEdits, clearEdits, getEditKey, STATUS_OPTIONS } from "@/lib/asset-edits";
 import { getSheetNames, parseSheet, mergeData } from "@/lib/excel-parser";
 import { exportCSV } from "@/lib/csv-export";
 import { KpiCards } from "./KpiCards";
