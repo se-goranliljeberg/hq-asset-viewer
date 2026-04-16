@@ -1,35 +1,33 @@
 
 
-# Source File Filter + Audit Dashboard
+# Add Manual Row Entry with Unsaved-Changes Warning
 
 ## Overview
-Two additions: (1) a "Source file" dropdown in the filter bar, and (2) a tabbed audit dashboard view with summary charts and status breakdown, all client-side.
+Add an "Add Row" button that opens a dialog where the user fills in all columns (including Status and Warranty until), then saves. The new row is added to the dataset and persisted in localStorage. Warn the user before destructive actions (Clear, Replace) if there are unsaved manual entries or edits.
 
 ## Changes
 
-### 1. Source file filter — `FilterBar.tsx` + `AssetViewer.tsx`
-- Add `sourceFilter` / `onSourceFilter` / `sources: string[]` props to FilterBar
-- Add a new Select dropdown: "All Sources" / per-file options
-- In AssetViewer, derive `sources` from `[...new Set(rows.map(r => r.sourceFile))]`, add `sourceFilter` state, apply it in the `filtered` memo
+### 1. New component: `src/components/AddRowDialog.tsx`
+- A Dialog with a form containing an Input for each column in `data.columns` (Computername, Modell, User, etc.)
+- A Select dropdown for Status (same options as the table)
+- A date picker for Warranty until
+- "Save" and "Cancel" buttons
+- On save: construct an `AssetRow` with a new ID (`max(existing) + 1`), `sourceFile: "Manual entry"`, populate `raw` from form values, run exception checks (missing user/model), call a callback to add the row
 
-### 2. Audit Dashboard — new `AuditDashboard.tsx` component
-A tab-switchable view (Table / Audit) above the main content area, using Tabs from shadcn. The Audit tab shows:
+### 2. `src/components/AssetViewer.tsx` — Wire up Add Row
+- Import and render `AddRowDialog`
+- Add `handleAddRow` callback that appends the new row to `data.rows`, updates columns if needed, and saves via `setData`
+- Add "Add Row" button in the header toolbar (next to Export CSV)
+- **Unsaved changes warning**: Track whether manual rows or edits exist. Before Clear and Replace actions, check if edits have been made and show an extra warning: "You have manual entries/edits that will be lost."
+  - Enhance the existing Clear confirmation dialog text to mention edits will be lost
+  - Enhance the Replace confirmation in the import dialog similarly
 
-- **Status breakdown**: Card grid showing count of "In stock", "Deployed at user", "Sent back to broker", and "No status set"
-- **Warranty overview**: Cards for "Expired" (warranty date < today), "Expiring in 30 days", "Valid", "No warranty set"
-- **Per-source-file summary**: Table showing each source file with row count, exception count, and status distribution
-- **Exceptions summary**: Top exceptions by frequency (grouped and counted)
+### 3. `src/lib/csv-export.ts` — Already handles `sourceFile`, no changes needed
 
-All computed client-side from `rows` + `edits`. Uses existing Card, Table, and Badge components.
+### 4. Duplicate detection
+- When adding a manual row, re-check all rows for duplicate computernames (same logic as `mergeData`)
 
-### 3. Wire up in `AssetViewer.tsx`
-- Add a Tabs component wrapping the existing table view and the new audit view
-- "Asset List" tab shows existing FilterBar + AssetTable
-- "Audit Report" tab shows AuditDashboard
-- Both tabs share the same KPI cards at the top
-
-### Files modified
-- `src/components/FilterBar.tsx` — add source file dropdown
-- `src/components/AssetViewer.tsx` — add sourceFilter state, derive sources list, add Tabs for table/audit toggle
-- `src/components/AuditDashboard.tsx` — new file with audit report cards and tables
+## Files
+- **New**: `src/components/AddRowDialog.tsx`
+- **Modified**: `src/components/AssetViewer.tsx` (add button, handler, warning logic)
 
