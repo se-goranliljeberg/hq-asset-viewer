@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import type { AssetData, AssetRow, SortState } from "@/lib/asset-types";
 import { saveData, loadData, clearData } from "@/lib/asset-store";
 import { getSheetNames, parseSheet } from "@/lib/excel-parser";
@@ -18,22 +18,30 @@ import { Upload, Trash2, Download, ShieldCheck, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 function useStickyState() {
-  const [data, setDataState] = useState<AssetData | null>(() => loadData());
+  const [data, setDataState] = useState<AssetData | null>(null);
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    setDataState(loadData());
+    setHydrated(true);
+  }, []);
+
   const setData = useCallback((d: AssetData | null) => {
     setDataState(d);
     if (d) {
       if (!saveData(d)) toast.error("Data too large for local storage.");
     }
   }, []);
-  return [data, setData] as const;
+  return [data, setData, hydrated] as const;
 }
 
 export function AssetViewer() {
-  const [data, setData] = useStickyState();
+  const [data, setData, hydrated] = useStickyState();
   const [search, setSearch] = useState("");
   const [modelFilter, setModelFilter] = useState("__all__");
   const [userFilter, setUserFilter] = useState("__all__");
   const [exceptionsOnly, setExceptionsOnly] = useState(false);
+  const [activeCard, setActiveCard] = useState<import("./KpiCards").KpiKey | null>(null);
   const [sort, setSort] = useState<SortState>({ column: "", dir: null });
   const [confirmClear, setConfirmClear] = useState(false);
   const [sheetPickerOpen, setSheetPickerOpen] = useState(false);
@@ -41,6 +49,17 @@ export function AssetViewer() {
   const pendingBuffer = useRef<ArrayBuffer | null>(null);
   const pendingFilename = useRef("");
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const handleCardClick = useCallback((key: import("./KpiCards").KpiKey) => {
+    // Toggle off if clicking same card
+    if (activeCard === key) {
+      setActiveCard(null);
+      setExceptionsOnly(false);
+      return;
+    }
+    setActiveCard(key);
+    setExceptionsOnly(key === "exceptions");
+  }, [activeCard]);
 
   const handleFile = useCallback(async (file: File) => {
     const buffer = await file.arrayBuffer();
@@ -107,7 +126,11 @@ export function AssetViewer() {
 
   const filtered = useMemo(() => {
     let result = rows;
-    if (exceptionsOnly) result = result.filter((r) => r.exceptions.length > 0);
+    // Card-based filters
+    if (activeCard === "exceptions") result = result.filter((r) => r.exceptions.length > 0);
+    else if (activeCard === "users") result = result.filter((r) => r.user !== "");
+    else if (activeCard === "models") result = result.filter((r) => r.modell !== "");
+    if (exceptionsOnly && activeCard !== "exceptions") result = result.filter((r) => r.exceptions.length > 0);
     if (modelFilter !== "__all__") result = result.filter((r) => r.modell === modelFilter);
     if (userFilter !== "__all__") result = result.filter((r) => r.user === userFilter);
     if (search.trim()) {
@@ -126,7 +149,7 @@ export function AssetViewer() {
       });
     }
     return result;
-  }, [rows, columns, search, modelFilter, userFilter, exceptionsOnly, sort]);
+  }, [rows, columns, search, modelFilter, userFilter, exceptionsOnly, activeCard, sort]);
 
   return (
     <TooltipProvider>
@@ -175,7 +198,7 @@ export function AssetViewer() {
         {/* Body */}
         {data ? (
           <div className="flex flex-1 flex-col gap-4 overflow-hidden px-6 py-4">
-            <KpiCards rows={rows} />
+            <KpiCards rows={rows} activeCard={activeCard} onCardClick={handleCardClick} />
             <FilterBar
               search={search} onSearch={setSearch}
               modelFilter={modelFilter} onModelFilter={setModelFilter}
