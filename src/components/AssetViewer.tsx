@@ -327,6 +327,42 @@ export function AssetViewer() {
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>{filtered.length.toLocaleString()} of {rows.length.toLocaleString()} rows</span>
                 </div>
+                {selectedIds.size > 0 && (
+                  <div className="flex items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-2">
+                    <span className="text-sm font-medium">{selectedIds.size} selected</span>
+                    <Select
+                      value="__batch__"
+                      onValueChange={(v) => {
+                        if (v === "__batch__") return;
+                        const statusVal = v === "__none__" ? "" : v;
+                        setEditsState((prev) => {
+                          const next = { ...prev };
+                          for (const id of selectedIds) {
+                            const key = getEditKey(id);
+                            next[key] = { ...(next[key] ?? { status: "", warrantyUntil: "" }), status: statusVal as any };
+                          }
+                          saveEdits(next);
+                          return next;
+                        });
+                        toast.success(`Updated status for ${selectedIds.size} rows`);
+                      }}
+                    >
+                      <SelectTrigger className="h-8 w-[200px] text-xs">
+                        <SelectValue placeholder="Set status for selected…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__batch__" disabled>Set status for selected…</SelectItem>
+                        <SelectItem value="__none__">— Clear status</SelectItem>
+                        {STATUS_OPTIONS.map((opt) => (
+                          <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>
+                      Deselect all
+                    </Button>
+                  </div>
+                )}
                 <AssetTable
                   rows={filtered}
                   columns={columns}
@@ -334,6 +370,8 @@ export function AssetViewer() {
                   onSort={toggleSort}
                   edits={edits}
                   onEdit={handleEdit}
+                  selectedIds={selectedIds}
+                  onSelectionChange={setSelectedIds}
                 />
               </TabsContent>
 
