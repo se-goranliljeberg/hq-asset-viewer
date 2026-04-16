@@ -1,21 +1,38 @@
 import { useRef, useState, useCallback, useMemo } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { AssetRow, SortState } from "@/lib/asset-types";
+import type { AssetEdits, AssetStatus } from "@/lib/asset-edits";
+import { STATUS_OPTIONS, getEditKey } from "@/lib/asset-edits";
 import { ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { Button } from "@/components/ui/button";
+import { CalendarIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { format, parseISO } from "date-fns";
 
 interface Props {
   rows: AssetRow[];
   columns: string[];
   sort: SortState;
   onSort: (col: string) => void;
+  edits: Record<string, AssetEdits>;
+  onEdit: (rowId: number, field: keyof AssetEdits, value: string) => void;
 }
 
 const MIN_COL_W = 80;
 const DEFAULT_COL_W = 160;
+const EDITABLE_COLS = ["Status", "Warranty until"] as const;
 
-export function AssetTable({ rows, columns, sort, onSort }: Props) {
+export function AssetTable({ rows, columns, sort, onSort, edits, onEdit }: Props) {
   const parentRef = useRef<HTMLDivElement>(null);
-  const displayCols = useMemo(() => [...columns, "Exceptions"], [columns]);
+  const displayCols = useMemo(
+    () => [...columns, ...EDITABLE_COLS, "Exceptions"],
+    [columns],
+  );
 
   const [colWidths, setColWidths] = useState<Record<string, number>>(() => {
     const m: Record<string, number> = {};
@@ -78,7 +95,6 @@ export function AssetTable({ rows, columns, sort, onSort }: Props) {
                 <span className="truncate">{col}</span>
                 {sortIcon(col)}
               </button>
-              {/* Resize handle */}
               <div
                 className="absolute right-0 top-1 bottom-1 w-1 cursor-col-resize hover:bg-primary/40 rounded"
                 onMouseDown={(e) => {
@@ -96,6 +112,8 @@ export function AssetTable({ rows, columns, sort, onSort }: Props) {
             const row = rows[vRow.index];
             const isOdd = vRow.index % 2 === 1;
             const hasEx = row.exceptions.length > 0;
+            const editKey = getEditKey(row.id);
+            const rowEdits = edits[editKey];
 
             return (
               <div
@@ -114,13 +132,71 @@ export function AssetTable({ rows, columns, sort, onSort }: Props) {
                 }}
               >
                 {displayCols.map((col) => {
+                  const w = colWidths[col] ?? DEFAULT_COL_W;
+
+                  if (col === "Status") {
+                    const val = rowEdits?.status ?? "";
+                    return (
+                      <div key={col} className="px-1 py-0.5" style={{ width: w, minWidth: MIN_COL_W }}>
+                        <Select
+                          value={val || "__none__"}
+                          onValueChange={(v) => onEdit(row.id, "status", v === "__none__" ? "" : v)}
+                        >
+                          <SelectTrigger className="h-7 text-xs border-transparent bg-transparent hover:border-border">
+                            <SelectValue placeholder="—" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">—</SelectItem>
+                            {STATUS_OPTIONS.map((opt) => (
+                              <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    );
+                  }
+
+                  if (col === "Warranty until") {
+                    const val = rowEdits?.warrantyUntil ?? "";
+                    const date = val ? parseISO(val) : undefined;
+                    return (
+                      <div key={col} className="px-1 py-0.5" style={{ width: w, minWidth: MIN_COL_W }}>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              className={cn(
+                                "h-7 w-full justify-start text-xs font-normal px-2",
+                                !date && "text-muted-foreground",
+                              )}
+                            >
+                              <CalendarIcon className="h-3 w-3 mr-1 shrink-0" />
+                              {date ? format(date, "yyyy-MM-dd") : "—"}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              mode="single"
+                              selected={date}
+                              onSelect={(d) =>
+                                onEdit(row.id, "warrantyUntil", d ? format(d, "yyyy-MM-dd") : "")
+                              }
+                              initialFocus
+                              className="p-3 pointer-events-auto"
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      </div>
+                    );
+                  }
+
                   const val =
                     col === "Exceptions" ? row.exceptions.join(", ") : (row.raw[col] ?? "");
                   return (
                     <div
                       key={col}
                       className="truncate px-3 py-1.5"
-                      style={{ width: colWidths[col] ?? DEFAULT_COL_W, minWidth: MIN_COL_W }}
+                      style={{ width: w, minWidth: MIN_COL_W }}
                       title={val}
                     >
                       {col === "Exceptions" && val ? (
