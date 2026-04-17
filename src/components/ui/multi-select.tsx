@@ -149,9 +149,6 @@ export function MultiSelect({
               <span className="italic text-muted-foreground">{noneOption.label}</span>
             </button>
           )}
-              <span className="italic text-muted-foreground">{noneOption.label}</span>
-            </button>
-          )}
           {filteredOptions.length === 0 && (
             <div className="px-2 py-2 text-xs text-muted-foreground">
               {query ? "No matches" : "No options"}
@@ -164,11 +161,7 @@ export function MultiSelect({
               onClick={() => toggle(opt)}
               className="flex w-full items-center gap-2 px-2 py-1.5 text-sm hover:bg-accent text-left"
             >
-              <Checkbox
-                checked={selected.includes(opt)}
-                onCheckedChange={() => toggle(opt)}
-                onClick={(e) => e.stopPropagation()}
-              />
+              <CheckboxIcon checked={selected.includes(opt)} />
               <span className="truncate">{opt}</span>
             </button>
           ))}
