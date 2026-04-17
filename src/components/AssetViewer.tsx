@@ -497,12 +497,21 @@ export function AssetViewer() {
     setModelFilter([]);
     setUserFilter([]);
     setSourceFilter([]);
-    setStatusFilter([STATUS_NONE_TOKEN, ...STATUS_OPTIONS].filter((s) => s !== "Sent back to broker"));
+    setStatusFilter(defaultStatusFilter);
     setExceptionsOnly(false);
     setSort({ column: "", dir: null });
     setConfirmClear(false);
     toast.success("Local data cleared.");
-  }, [setData]);
+  }, [setData, defaultStatusFilter]);
+
+  const clearAllFilters = useCallback(() => {
+    setSearch("");
+    setModelFilter([]);
+    setUserFilter([]);
+    setSourceFilter([]);
+    setStatusFilter([]);
+    setExceptionsOnly(false);
+  }, []);
 
   const toggleSort = useCallback((col: string) => {
     setSort((prev) => {
