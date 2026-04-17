@@ -407,6 +407,11 @@ export function AssetViewer() {
                   exceptionsOnly={exceptionsOnly} onExceptionsOnly={setExceptionsOnly}
                   models={models} users={users} sources={sources}
                   statuses={[...STATUS_OPTIONS]}
+                  onResetColumns={() => {
+                    clearColumnOrder();
+                    localStorage.removeItem("hq_asset_column_widths");
+                    toast.success("Column layout reset — reload to apply.");
+                  }}
                 />
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>{filtered.length.toLocaleString()} of {rows.length.toLocaleString()} rows</span>
