@@ -36,11 +36,12 @@ const DEFAULT_COL_W = 160;
 const CHECKBOX_COL_W = 40;
 const EDITABLE_COLS = ["Status", "Warranty until"] as const;
 const NON_EDITABLE_COLS = new Set(["Exceptions", "Source file"]);
+const COMMENTS_COL = "Comments";
 
 // Build the default display column order: User first, then everything else,
-// then Status / Warranty / Exceptions / Source file at the end.
+// then Status / Warranty / Exceptions / Comments / Source file at the end.
 function buildDefaultOrder(columns: string[]): string[] {
-  const tail = [...EDITABLE_COLS, "Exceptions", "Source file"];
+  const tail = [...EDITABLE_COLS, "Exceptions", COMMENTS_COL, "Source file"];
   const userKey = columns.find((c) => c.toLowerCase() === "user");
   const rest = columns.filter((c) => c !== userKey);
   return [...(userKey ? [userKey] : []), ...rest, ...tail];
@@ -390,6 +391,20 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                           </PopoverContent>
                         </Popover>
                       </div>
+                    );
+                  }
+
+                  if (col === COMMENTS_COL) {
+                    const val = rowEdits?.comment ?? "";
+                    return (
+                      <InlineCell
+                        key={col}
+                        value={val}
+                        width={w}
+                        col={col}
+                        rowId={row.id}
+                        onCellEdit={(rid, _c, v) => onEdit(rid, "comment", v)}
+                      />
                     );
                   }
 

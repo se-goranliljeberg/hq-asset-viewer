@@ -14,7 +14,7 @@ export function exportCSV(
     return v;
   };
 
-  const allCols = [...columns, "Status", "Warranty until", "Exceptions", "Source file"];
+  const allCols = [...columns, "Status", "Warranty until", "Exceptions", "Comments", "Source file"];
   const header = allCols.map(escape).join(",");
   const lines = rows.map((r) => {
     const cells = columns.map((c) => escape(r.raw[c] ?? ""));
@@ -22,6 +22,7 @@ export function exportCSV(
     cells.push(escape(e?.status ?? ""));
     cells.push(escape(e?.warrantyUntil ?? ""));
     cells.push(escape(r.exceptions.join("; ")));
+    cells.push(escape(e?.comment ?? ""));
     cells.push(escape(r.sourceFile ?? ""));
     return cells.join(",");
   });
