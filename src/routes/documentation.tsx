@@ -1,5 +1,5 @@
 import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
-import { ArrowLeft, BookOpen, ShieldCheck, FileText } from "lucide-react";
+import { ArrowLeft, BookOpen, ShieldCheck, FileText, History } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/documentation")({
@@ -16,10 +16,16 @@ function DocumentationLayout() {
   const location = useLocation();
   const path = location.pathname.replace(/\/$/, "");
 
-  const navItems: { to: "/documentation" | "/documentation/technical" | "/documentation/user-guide"; label: string; icon: typeof BookOpen; exact?: boolean }[] = [
+  const navItems: {
+    to: "/documentation" | "/documentation/technical" | "/documentation/user-guide" | "/documentation/changelog";
+    label: string;
+    icon: typeof BookOpen;
+    exact?: boolean;
+  }[] = [
     { to: "/documentation", label: "Overview", icon: BookOpen, exact: true },
     { to: "/documentation/technical", label: "Technical & Security", icon: ShieldCheck },
     { to: "/documentation/user-guide", label: "User Guide", icon: FileText },
+    { to: "/documentation/changelog", label: "Changelog", icon: History },
   ];
 
   return (
