@@ -73,7 +73,22 @@ export function AssetViewer() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    setEditsState(loadEdits());
+    // Sanitize edits on load: clear warrantyUntil values that aren't valid YYYY-MM-DD,
+    // which would otherwise crash the date picker with "Invalid time value".
+    const loaded = loadEdits();
+    let dirty = false;
+    const cleaned: typeof loaded = {};
+    for (const [k, v] of Object.entries(loaded)) {
+      const w = v.warrantyUntil ?? "";
+      if (w && !/^\d{4}-\d{2}-\d{2}$/.test(w)) {
+        cleaned[k] = { ...v, warrantyUntil: "" };
+        dirty = true;
+      } else {
+        cleaned[k] = v;
+      }
+    }
+    if (dirty) saveEdits(cleaned);
+    setEditsState(cleaned);
   }, []);
 
   const handleEdit = useCallback((rowId: number, field: keyof AssetEdits, value: string) => {
