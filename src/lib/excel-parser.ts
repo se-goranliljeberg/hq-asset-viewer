@@ -3,7 +3,10 @@ import type { AssetRow, AssetData } from "./asset-types";
 import type { AssetEdits, AssetStatus } from "./asset-edits";
 import { STATUS_OPTIONS } from "./asset-edits";
 
-const EXPORT_EXTRA_COLS = new Set(["Status", "Warranty until", "Exceptions", "Comments", "Source file"]);
+// Columns we add on export that are derived/computed, not source data.
+// Status & "Warranty until" are intentionally NOT here — they're canonical
+// fields users may legitimately import from spreadsheets.
+const EXPORT_EXTRA_COLS = new Set(["Exceptions", "Comments", "Source file"]);
 
 // ---------- Canonical schema ----------
 
