@@ -65,6 +65,7 @@ export function AssetViewer() {
   const [importModeOpen, setImportModeOpen] = useState(false);
   const [addRowOpen, setAddRowOpen] = useState(false);
   const [debugOpen, setDebugOpen] = useState(false);
+  const [pendingIsUsersFile, setPendingIsUsersFile] = useState(false);
   const pendingBuffer = useRef<ArrayBuffer | null>(null);
   const pendingFilename = useRef("");
   const pendingParsed = useRef<AssetData | null>(null);
