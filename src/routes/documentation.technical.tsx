@@ -154,6 +154,8 @@ function TechnicalDoc() {
           <li><code>hq_asset_column_widths</code> — user&rsquo;s column widths</li>
           <li><code>hq_mapping_*</code> — saved column mappings keyed by header-set hash</li>
           <li><code>hq_canonical_migrated_v1</code> — one-time migration flag</li>
+          <li><code>hq_audit_user_initials</code> — initials shown in audit log entries</li>
+          <li><code>hq_last_seen_version</code> — last app version seen by this browser (used by the &ldquo;What&rsquo;s new&rdquo; toast)</li>
         </ul>
         <p className="mt-2">
           Data never leaves the browser. There is no IndexedDB, no cookies, no Service Worker
