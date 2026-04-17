@@ -93,6 +93,34 @@ export function AssetViewer() {
   const [mappingInitial, setMappingInitial] = useState<Mapping | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // Initials prompt — shown once on first audit-logging edit if not stored yet.
+  const [initialsOpen, setInitialsOpen] = useState(false);
+  const pendingAfterInitials = useRef<(() => void) | null>(null);
+
+  const ensureInitials = useCallback((proceed: () => void) => {
+    if (getStoredInitials()) {
+      proceed();
+      return;
+    }
+    pendingAfterInitials.current = proceed;
+    setInitialsOpen(true);
+  }, []);
+
+  const handleInitialsConfirm = useCallback((value: string) => {
+    setStoredInitials(value);
+    setInitialsOpen(false);
+    const cb = pendingAfterInitials.current;
+    pendingAfterInitials.current = null;
+    if (cb) cb();
+  }, []);
+
+  const handleInitialsSkip = useCallback(() => {
+    setInitialsOpen(false);
+    const cb = pendingAfterInitials.current;
+    pendingAfterInitials.current = null;
+    if (cb) cb();
+  }, []);
+
   useEffect(() => {
     // Sanitize edits on load: clear warrantyUntil values that aren't valid YYYY-MM-DD,
     // which would otherwise crash the date picker with "Invalid time value".
