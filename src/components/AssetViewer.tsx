@@ -470,6 +470,17 @@ export function AssetViewer() {
                 <TooltipContent>Data stays on this device — no network calls</TooltipContent>
               </Tooltip>
 
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button size="sm" variant="ghost" asChild>
+                    <Link to="/documentation">
+                      <BookOpen className="h-4 w-4 mr-1" /> Documentation
+                    </Link>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Technical documentation & user guide</TooltipContent>
+              </Tooltip>
+
               <input ref={fileRef} type="file" accept=".xlsx,.xls" onChange={onFileChange} className="hidden" />
               <Tooltip>
                 <TooltipTrigger asChild>
