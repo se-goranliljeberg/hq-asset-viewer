@@ -106,6 +106,18 @@ export function AssetViewer() {
     setEditsState(cleaned);
   }, []);
 
+  // One-time canonical migration on hydrate
+  useEffect(() => {
+    if (!hydrated || !data || isMigrated()) return;
+    const { data: migrated, changed } = migrateToCanonical(data);
+    markMigrated();
+    if (changed) {
+      setDataDirect(migrated);
+      saveData(migrated);
+      toast.success("Cleaned up legacy column duplicates.");
+    }
+  }, [hydrated, data, setDataDirect]);
+
   const handleEdit = useCallback((rowId: number, field: keyof AssetEdits, value: string) => {
     setEditsState((prev) => {
       const key = getEditKey(rowId);
