@@ -110,6 +110,33 @@ export function suggestMapping(headers: string[]): Record<string, MappingDetecti
   return result;
 }
 
+// ---------- Status normalization ----------
+
+/**
+ * Map any inbound status string to one of the canonical STATUS_OPTIONS.
+ * Tolerant to case, whitespace, and common aliases used in Excel files.
+ * Returns "" when the value can't be confidently classified.
+ */
+export function normalizeStatus(input: unknown): AssetStatus {
+  if (input === null || input === undefined) return "";
+  const raw = String(input).trim();
+  if (!raw) return "";
+  const norm = raw.toLowerCase().replace(/[._\-/]+/g, " ").replace(/\s+/g, " ").trim();
+  for (const opt of STATUS_OPTIONS) {
+    if (opt.toLowerCase() === norm) return opt;
+  }
+  if (/(sent|return(ed)?|ship(ped)?|back).*broker|broker.*return|brokered|return to broker/.test(norm)) {
+    return "Sent back to broker";
+  }
+  if (/(deployed|assigned|issued|in use|with user|user has|handed out)/.test(norm)) {
+    return "Deployed at user";
+  }
+  if (/(in stock|stock|warehouse|available|spare|on shelf|inventory|new)/.test(norm)) {
+    return "In stock";
+  }
+  return "";
+}
+
 // ---------- Date normalization ----------
 
 export function getSheetNames(buffer: ArrayBuffer): string[] {
