@@ -234,6 +234,23 @@ export function AssetViewer() {
     toast.success(`Added manual row "${computername || "Unnamed"}"`);
   }, [data, setData]);
 
+  const openMappingFor = useCallback((buffer: ArrayBuffer, sheet: string, filename: string) => {
+    pendingBuffer.current = buffer;
+    pendingFilename.current = filename;
+    pendingSheet.current = sheet;
+    const inspected = inspectSheet(buffer, sheet);
+    if (inspected.headers.length === 0) {
+      toast.error("Sheet is empty.");
+      return;
+    }
+    const hash = headerSetHash(inspected.headers);
+    const saved = loadMapping(hash);
+    setMappingHeaders(inspected.headers);
+    setMappingSamples(inspected.samples);
+    setMappingInitial(saved);
+    setMappingOpen(true);
+  }, []);
+
   const handleFile = useCallback(async (file: File) => {
     const buffer = await file.arrayBuffer();
     const sheets = getSheetNames(buffer);
@@ -243,17 +260,35 @@ export function AssetViewer() {
       setPendingSheets(sheets);
       setSheetPickerOpen(true);
     } else {
-      applyParsed(parseSheet(buffer, sheets[0], file.name));
+      openMappingFor(buffer, sheets[0], file.name);
     }
-  }, [applyParsed]);
+  }, [openMappingFor]);
 
   const handleSheetPick = useCallback((sheet: string) => {
     setSheetPickerOpen(false);
     if (pendingBuffer.current) {
-      applyParsed(parseSheet(pendingBuffer.current, sheet, pendingFilename.current));
-      pendingBuffer.current = null;
+      openMappingFor(pendingBuffer.current, sheet, pendingFilename.current);
     }
-  }, [applyParsed]);
+  }, [openMappingFor]);
+
+  const handleMappingApply = useCallback((mapping: Mapping, remember: boolean) => {
+    setMappingOpen(false);
+    if (!pendingBuffer.current) return;
+    if (remember) saveMapping(headerSetHash(mappingHeaders), mapping);
+    const result = parseSheetWithMapping(
+      pendingBuffer.current,
+      pendingSheet.current,
+      pendingFilename.current,
+      mapping,
+    );
+    applyParsed(result);
+    pendingBuffer.current = null;
+  }, [applyParsed, mappingHeaders]);
+
+  const handleMappingCancel = useCallback(() => {
+    setMappingOpen(false);
+    pendingBuffer.current = null;
+  }, []);
 
   const onFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
