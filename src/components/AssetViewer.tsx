@@ -23,8 +23,9 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Upload, Trash2, Download, ShieldCheck, RefreshCw, Plus } from "lucide-react";
+import { Upload, Trash2, Download, ShieldCheck, RefreshCw, Plus, Bug } from "lucide-react";
 import { AddRowDialog } from "./AddRowDialog";
+import { ImportDebugger } from "./ImportDebugger";
 
 import { toast } from "sonner";
 
