@@ -863,8 +863,8 @@ export function AssetViewer() {
           sheets={pendingSheets}
           onPick={handleSheetPick}
           onCancel={() => setSheetPickerOpen(false)}
-                />
-                <ActiveFilterChips chips={activeChips} onClearAll={clearAllFilters} />
+        />
+
         <AlertDialog open={importModeOpen} onOpenChange={setImportModeOpen}>
           <AlertDialogContent>
             <AlertDialogHeader>
