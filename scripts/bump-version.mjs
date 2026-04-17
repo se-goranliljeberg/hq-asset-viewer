@@ -5,10 +5,10 @@
  * Usage:
  *   node scripts/bump-version.mjs [patch|minor|major]
  *
- * Defaults to "patch". Updates package.json's "version" field in place.
- * The version is read by src/components/DocVersionBadge.tsx and by the
- * "What's new" toast (src/components/WhatsNewToast.tsx) at runtime, so
- * bumping it is the single source of truth for both.
+ * Defaults to "patch". Updates package.json's "version" field in place
+ * AND prepends a stub release entry into
+ * src/routes/documentation.changelog.tsx with today's date so the
+ * changelog never falls behind. Edit the stub to describe the change.
  *
  * NPM aliases (see package.json scripts):
  *   npm run bump          → patch (0.2.0 → 0.2.1)
@@ -21,6 +21,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkgPath = resolve(__dirname, "..", "package.json");
+const changelogPath = resolve(__dirname, "..", "src", "routes", "documentation.changelog.tsx");
 
 const kind = (process.argv[2] ?? "patch").toLowerCase();
 if (!["patch", "minor", "major"].includes(kind)) {
@@ -43,5 +44,39 @@ else { pat += 1; }
 const next = `${maj}.${min}.${pat}`;
 pkg.version = next;
 writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
+
+const today = new Date().toISOString().slice(0, 10);
+
+// Prepend a stub entry into the RELEASES array.
+// We look for the literal `const RELEASES: Release[] = [` and insert right after the opening bracket.
+const changelog = readFileSync(changelogPath, "utf8");
+const marker = "const RELEASES: Release[] = [";
+const idx = changelog.indexOf(marker);
+let changelogUpdated = false;
+if (idx === -1) {
+  console.warn("⚠ Could not locate RELEASES array in documentation.changelog.tsx — skipping changelog stub.");
+} else {
+  const insertAt = idx + marker.length;
+  const stub = `
+  {
+    version: ${JSON.stringify(next)},
+    date: ${JSON.stringify(today)},
+    title: "TODO — describe this release",
+    added: [
+      "TODO: list new features added in this release.",
+    ],
+    // changed: ["TODO: list behavior changes."],
+    // fixed:   ["TODO: list bug fixes."],
+    // removed: ["TODO: list removed features."],
+  },`;
+  const nextChangelog = changelog.slice(0, insertAt) + stub + changelog.slice(insertAt);
+  writeFileSync(changelogPath, nextChangelog);
+  changelogUpdated = true;
+}
+
 console.log(`✓ Version: ${current} → ${next}`);
-console.log(`  Don't forget to add an entry to src/routes/documentation.changelog.tsx`);
+if (changelogUpdated) {
+  console.log(`✓ Stub entry prepended to documentation.changelog.tsx (${today}) — edit it to describe the release.`);
+} else {
+  console.log(`  Add an entry to src/routes/documentation.changelog.tsx manually.`);
+}

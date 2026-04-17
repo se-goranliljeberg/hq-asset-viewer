@@ -1,8 +1,9 @@
 import * as React from "react";
-import { Check, ChevronDown, X } from "lucide-react";
+import { Check, ChevronDown, Search, X } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 interface MultiSelectProps {
@@ -14,6 +15,8 @@ interface MultiSelectProps {
   className?: string;
   /** Optional special row representing "no value set". When selected, included in `selected` as this token. */
   noneOption?: { value: string; label: string };
+  /** Show inline search box above the option list (auto-on for >8 options). */
+  searchable?: boolean;
 }
 
 /**
@@ -28,8 +31,23 @@ export function MultiSelect({
   allLabel = "All",
   className,
   noneOption,
+  searchable,
 }: MultiSelectProps) {
   const [open, setOpen] = React.useState(false);
+  const [query, setQuery] = React.useState("");
+
+  const showSearch = searchable ?? options.length > 8;
+
+  // Reset the search field when the popover closes so the next open is clean.
+  React.useEffect(() => {
+    if (!open) setQuery("");
+  }, [open]);
+
+  const filteredOptions = React.useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return options;
+    return options.filter((o) => o.toLowerCase().includes(q));
+  }, [options, query]);
 
   const allOptionValues = React.useMemo(() => {
     return noneOption ? [noneOption.value, ...options] : options;
@@ -76,7 +94,7 @@ export function MultiSelect({
           <ChevronDown className="h-4 w-4 opacity-50 shrink-0 ml-2" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[240px] p-0" align="start">
+      <PopoverContent className="w-[260px] p-0" align="start">
         <div className="flex items-center justify-between border-b px-2 py-1.5 text-xs">
           <button
             type="button"
@@ -93,8 +111,20 @@ export function MultiSelect({
             <X className="h-3 w-3" /> None
           </button>
         </div>
+        {showSearch && (
+          <div className="relative border-b px-2 py-1.5">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+            <Input
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search…"
+              className="h-7 pl-7 text-xs"
+            />
+          </div>
+        )}
         <div className="max-h-[280px] overflow-y-auto py-1">
-          {noneOption && (
+          {noneOption && (!query || noneOption.label.toLowerCase().includes(query.toLowerCase())) && (
             <button
               type="button"
               onClick={() => toggle(noneOption.value)}
@@ -108,10 +138,12 @@ export function MultiSelect({
               <span className="italic text-muted-foreground">{noneOption.label}</span>
             </button>
           )}
-          {options.length === 0 && !noneOption && (
-            <div className="px-2 py-2 text-xs text-muted-foreground">No options</div>
+          {filteredOptions.length === 0 && (
+            <div className="px-2 py-2 text-xs text-muted-foreground">
+              {query ? "No matches" : "No options"}
+            </div>
           )}
-          {options.map((opt) => (
+          {filteredOptions.map((opt) => (
             <button
               key={opt}
               type="button"
