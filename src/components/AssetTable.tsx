@@ -357,7 +357,11 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
 
                   if (col === "Warranty until") {
                     const val = rowEdits?.warrantyUntil ?? "";
-                    const date = val ? parseISO(val) : undefined;
+                    let date: Date | undefined;
+                    if (val) {
+                      const parsed = parseISO(val);
+                      if (!isNaN(parsed.getTime())) date = parsed;
+                    }
                     return (
                       <div key={col} className="px-1 py-0.5" style={{ width: w, minWidth: MIN_COL_W }}>
                         <Popover>
@@ -370,7 +374,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                               )}
                             >
                               <CalendarIcon className="h-3 w-3 mr-1 shrink-0" />
-                              {date ? format(date, "yyyy-MM-dd") : "—"}
+                              {date ? format(date, "yyyy-MM-dd") : (val || "—")}
                             </Button>
                           </PopoverTrigger>
                           <PopoverContent className="w-auto p-0" align="start">
