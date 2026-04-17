@@ -94,13 +94,19 @@ export function AssetViewer() {
     [],
   );
   const [search, setSearch] = useState("");
-  const [modelFilter, setModelFilter] = useState<string[]>(() => loadFilterFromStorage("hq_filter_models", []));
-  const [userFilter, setUserFilter] = useState<string[]>(() => loadFilterFromStorage("hq_filter_users", []));
-  const [sourceFilter, setSourceFilter] = useState<string[]>(() => loadFilterFromStorage("hq_filter_sources", []));
+  const [modelFilter, setModelFilter] = useState<string[]>(() => loadFilterFromStorage(FILTER_STORAGE_KEYS.models, []));
+  const [userFilter, setUserFilter] = useState<string[]>(() => loadFilterFromStorage(FILTER_STORAGE_KEYS.users, []));
+  const [sourceFilter, setSourceFilter] = useState<string[]>(() => loadFilterFromStorage(FILTER_STORAGE_KEYS.sources, []));
   // Default: exclude "Sent back to broker" — show everything else (incl. no-status rows).
   const [statusFilter, setStatusFilter] = useState<string[]>(() =>
-    loadFilterFromStorage("hq_filter_status", [STATUS_NONE_TOKEN, ...STATUS_OPTIONS].filter((s) => s !== "Sent back to broker")),
+    loadFilterFromStorage(FILTER_STORAGE_KEYS.status, defaultStatusFilter),
   );
+
+  // Persist filter selections so they survive reloads.
+  useEffect(() => { saveFilterToStorage(FILTER_STORAGE_KEYS.models, modelFilter); }, [modelFilter]);
+  useEffect(() => { saveFilterToStorage(FILTER_STORAGE_KEYS.users, userFilter); }, [userFilter]);
+  useEffect(() => { saveFilterToStorage(FILTER_STORAGE_KEYS.sources, sourceFilter); }, [sourceFilter]);
+  useEffect(() => { saveFilterToStorage(FILTER_STORAGE_KEYS.status, statusFilter); }, [statusFilter]);
   const [exceptionsOnly, setExceptionsOnly] = useState(false);
   const [activeCard, setActiveCard] = useState<KpiKey | null>(null);
   const [sort, setSort] = useState<SortState>({ column: "", dir: null });
