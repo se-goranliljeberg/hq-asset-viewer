@@ -42,6 +42,7 @@ import { ImportDebugger } from "./ImportDebugger";
 import { ColumnMappingDialog } from "./ColumnMappingDialog";
 import { InitialsPromptDialog } from "./InitialsPromptDialog";
 import { WhatsNewToast } from "./WhatsNewToast";
+import { APP_VERSION, useHasUnseenVersion } from "@/lib/version-state";
 
 import { toast } from "sonner";
 
@@ -636,7 +637,20 @@ export function AssetViewer() {
         <header className="shrink-0 border-b border-border px-6 py-4">
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div>
-              <h1 className="text-xl font-semibold tracking-tight">HQ Asset Overview</h1>
+              <h1 className="text-xl font-semibold tracking-tight flex items-baseline gap-2">
+                HQ Asset Overview
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Link
+                      to="/documentation/changelog"
+                      className="text-xs font-normal font-mono text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      v{APP_VERSION}
+                    </Link>
+                  </TooltipTrigger>
+                  <TooltipContent>View changelog</TooltipContent>
+                </Tooltip>
+              </h1>
               {data && (
                 <p className="text-xs text-muted-foreground mt-0.5">
                   Last loaded: {data.filename} — {new Date(data.loadedAt).toLocaleString()}
@@ -656,13 +670,20 @@ export function AssetViewer() {
 
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button size="sm" variant="ghost" asChild>
+                  <Button size="sm" variant="ghost" asChild className="relative">
                     <Link to="/documentation">
                       <BookOpen className="h-4 w-4 mr-1" /> Documentation
+                      {hasUnseenVersion && (
+                        <span className="ml-1.5 inline-flex items-center rounded-full bg-chart-2 px-1.5 py-0 text-[9px] font-bold uppercase tracking-wider text-background">
+                          New
+                        </span>
+                      )}
                     </Link>
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Technical documentation & user guide</TooltipContent>
+                <TooltipContent>
+                  {hasUnseenVersion ? `New in v${APP_VERSION} — open to view changelog` : "Technical documentation & user guide"}
+                </TooltipContent>
               </Tooltip>
 
               <input ref={fileRef} type="file" accept=".xlsx,.xls" onChange={onFileChange} className="hidden" />
