@@ -745,6 +745,7 @@ export function AssetViewer() {
                     toast.success(n > 0 ? `Forgot ${n} saved mapping(s).` : "No saved mappings to clear.");
                   }}
                 />
+                <ActiveFilterChips chips={activeChips} onClearAll={clearAllFilters} />
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>{filtered.length.toLocaleString()} of {rows.length.toLocaleString()} rows</span>
                   <span className="hidden sm:flex items-center gap-3 text-muted-foreground/70">
