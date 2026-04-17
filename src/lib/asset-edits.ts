@@ -6,6 +6,7 @@ export type AssetStatus = (typeof STATUS_OPTIONS)[number] | "";
 export interface AssetEdits {
   status: AssetStatus;
   warrantyUntil: string; // YYYY-MM-DD or ""
+  comment?: string; // free-text user note
 }
 
 type EditsMap = Record<string, AssetEdits>; // keyed by row computername+id
