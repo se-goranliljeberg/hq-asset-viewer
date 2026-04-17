@@ -394,6 +394,20 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                     );
                   }
 
+                  if (col === COMMENTS_COL) {
+                    const val = rowEdits?.comment ?? "";
+                    return (
+                      <InlineCell
+                        key={col}
+                        value={val}
+                        width={w}
+                        col={col}
+                        rowId={row.id}
+                        onCellEdit={(rid, _c, v) => onEdit(rid, "comment", v)}
+                      />
+                    );
+                  }
+
                   // Exceptions and Source file are read-only
                   if (NON_EDITABLE_COLS.has(col)) {
                     const val = col === "Exceptions" ? row.exceptions.join(", ") : row.sourceFile;
