@@ -346,46 +346,47 @@ export function AssetViewer() {
 
   const handleAddRow = useCallback((raw: Record<string, string>, status: AssetStatus, warrantyUntil: string) => {
     if (!data) return;
-    const newId = Math.max(...data.rows.map((r) => r.id), 0) + 1;
-    const cnKey = Object.keys(raw).find((k) => k.toLowerCase() === "computername") ?? "";
-    const modelKey = Object.keys(raw).find((k) => k.toLowerCase() === "modell") ?? "";
-    const userKey = Object.keys(raw).find((k) => k.toLowerCase() === "user") ?? "";
-    const computername = cnKey ? (raw[cnKey] ?? "").trim() : "";
-    const modell = modelKey ? (raw[modelKey] ?? "").trim() : "";
-    const user = userKey ? (raw[userKey] ?? "").trim() : "";
-    const exceptions: string[] = [];
-    if (!computername) exceptions.push("Missing Computername");
-    if (!user) exceptions.push("Missing User");
-    if (!modell) exceptions.push("Missing Modell");
-    if (computername && data.rows.some((r) => r.computername.toLowerCase() === computername.toLowerCase())) {
-      exceptions.push("Duplicate Computername (cross-file)");
-    }
-    const newRow: AssetRow = { id: newId, computername, modell, user, raw, exceptions, sourceFile: "Manual entry" };
-    const updatedData: AssetData = { ...data, rows: [...data.rows, newRow] };
-    setData(updatedData);
+    ensureInitials(() => {
+      const newId = Math.max(...data.rows.map((r) => r.id), 0) + 1;
+      const cnKey = Object.keys(raw).find((k) => k.toLowerCase() === "computername") ?? "";
+      const modelKey = Object.keys(raw).find((k) => k.toLowerCase() === "modell") ?? "";
+      const userKey = Object.keys(raw).find((k) => k.toLowerCase() === "user") ?? "";
+      const computername = cnKey ? (raw[cnKey] ?? "").trim() : "";
+      const modell = modelKey ? (raw[modelKey] ?? "").trim() : "";
+      const user = userKey ? (raw[userKey] ?? "").trim() : "";
+      const exceptions: string[] = [];
+      if (!computername) exceptions.push("Missing Computername");
+      if (!user) exceptions.push("Missing User");
+      if (!modell) exceptions.push("Missing Modell");
+      if (computername && data.rows.some((r) => r.computername.toLowerCase() === computername.toLowerCase())) {
+        exceptions.push("Duplicate Computername (cross-file)");
+      }
+      const newRow: AssetRow = { id: newId, computername, modell, user, raw, exceptions, sourceFile: "Manual entry" };
+      const updatedData: AssetData = { ...data, rows: [...data.rows, newRow] };
+      setData(updatedData);
 
-    // Build initial audit entry: list non-empty fields
-    const filledFields = Object.entries(raw)
-      .filter(([, v]) => v && v.trim() !== "")
-      .map(([k]) => k);
-    const summary = filledFields.length > 0
-      ? `Row added manually with ${filledFields.join(", ")}`
-      : "Row added manually";
-    const initialComment = appendComment("", summary);
-    const withStatus = status
-      ? appendComment(initialComment, describeChange("Status", "", status))
-      : initialComment;
-    const withWarranty = warrantyUntil
-      ? appendComment(withStatus, describeChange("Warranty until", "", warrantyUntil))
-      : withStatus;
+      const filledFields = Object.entries(raw)
+        .filter(([, v]) => v && v.trim() !== "")
+        .map(([k]) => k);
+      const summary = filledFields.length > 0
+        ? `Row added manually with ${filledFields.join(", ")}`
+        : "Row added manually";
+      const initialComment = appendComment("", summary);
+      const withStatus = status
+        ? appendComment(initialComment, describeChange("Status", "", status))
+        : initialComment;
+      const withWarranty = warrantyUntil
+        ? appendComment(withStatus, describeChange("Warranty until", "", warrantyUntil))
+        : withStatus;
 
-    setEditsState((prev) => {
-      const next = { ...prev, [String(newId)]: { status, warrantyUntil, comment: withWarranty } };
-      saveEdits(next);
-      return next;
+      setEditsState((prev) => {
+        const next = { ...prev, [String(newId)]: { status, warrantyUntil, comment: withWarranty } };
+        saveEdits(next);
+        return next;
+      });
+      toast.success(`Added manual row "${computername || "Unnamed"}"`);
     });
-    toast.success(`Added manual row "${computername || "Unnamed"}"`);
-  }, [data, setData]);
+  }, [data, setData, ensureInitials]);
 
   const openMappingFor = useCallback((buffer: ArrayBuffer, sheet: string, filename: string) => {
     pendingBuffer.current = buffer;
