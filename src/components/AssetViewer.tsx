@@ -1,9 +1,9 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import type { AssetData, AssetRow, SortState } from "@/lib/asset-types";
 import type { AssetEdits, AssetStatus } from "@/lib/asset-edits";
-import { saveData, loadData, clearData } from "@/lib/asset-store";
+import { saveData, loadData, clearData, clearColumnOrder } from "@/lib/asset-store";
 import { loadEdits, saveEdits, clearEdits, getEditKey, STATUS_OPTIONS } from "@/lib/asset-edits";
-import { getSheetNames, parseSheet, mergeData } from "@/lib/excel-parser";
+import { getSheetNames, parseSheet, mergeData, enrichWithUsers } from "@/lib/excel-parser";
 import type { ParseResult } from "@/lib/excel-parser";
 import { exportCSV } from "@/lib/csv-export";
 import { KpiCards } from "./KpiCards";
@@ -63,6 +63,7 @@ export function AssetViewer() {
   const [pendingSheets, setPendingSheets] = useState<string[]>([]);
   const [importModeOpen, setImportModeOpen] = useState(false);
   const [addRowOpen, setAddRowOpen] = useState(false);
+  const [pendingIsUsersFile, setPendingIsUsersFile] = useState(false);
   const pendingBuffer = useRef<ArrayBuffer | null>(null);
   const pendingFilename = useRef("");
   const pendingParsed = useRef<AssetData | null>(null);
@@ -124,11 +125,25 @@ export function AssetViewer() {
     if (data) {
       pendingParsed.current = result.data;
       pendingSeedEdits.current = result.seedEdits;
+      setPendingIsUsersFile(result.isUsersFile);
       setImportModeOpen(true);
     } else {
       setData(result.data);
       applySeedEdits(result.seedEdits);
       toast.success(`Loaded ${result.data.rows.length} rows from "${result.data.filename}"`);
+    }
+  }, [data, setData, applySeedEdits]);
+
+  const handleImportEnrich = useCallback(() => {
+    setImportModeOpen(false);
+    if (pendingParsed.current && data) {
+      const merged = enrichWithUsers(data, pendingParsed.current);
+      setData(merged);
+      applySeedEdits(pendingSeedEdits.current);
+      toast.success(`Enriched users — total rows: ${merged.rows.length}`);
+      pendingParsed.current = null;
+      pendingSeedEdits.current = {};
+      setPendingIsUsersFile(false);
     }
   }, [data, setData, applySeedEdits]);
 
