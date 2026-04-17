@@ -2,7 +2,8 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Search } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Search, RotateCcw } from "lucide-react";
 
 interface Props {
   search: string;
@@ -21,6 +22,7 @@ interface Props {
   users: string[];
   sources: string[];
   statuses: string[];
+  onResetColumns?: () => void;
 }
 
 export function FilterBar({
@@ -31,6 +33,7 @@ export function FilterBar({
   statusFilter, onStatusFilter,
   exceptionsOnly, onExceptionsOnly,
   models, users, sources, statuses,
+  onResetColumns,
 }: Props) {
   return (
     <div className="flex flex-wrap items-center gap-3">
