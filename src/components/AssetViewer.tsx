@@ -20,6 +20,7 @@ import { exportCSV } from "@/lib/csv-export";
 import { KpiCards } from "./KpiCards";
 import type { KpiKey } from "./KpiCards";
 import { FilterBar, STATUS_NONE_TOKEN } from "./FilterBar";
+import { ActiveFilterChips, type FilterChip } from "./ActiveFilterChips";
 import { AssetTable } from "./AssetTable";
 import { AuditDashboard } from "./AuditDashboard";
 import { SheetPicker } from "./SheetPicker";
@@ -44,6 +45,29 @@ import { WhatsNewToast } from "./WhatsNewToast";
 
 import { toast } from "sonner";
 
+const FILTER_STORAGE_KEYS = {
+  models: "hq_filter_models",
+  users: "hq_filter_users",
+  sources: "hq_filter_sources",
+  status: "hq_filter_status",
+} as const;
+
+function loadFilterFromStorage(key: string, fallback: string[]): string[] {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.every((v) => typeof v === "string")) return parsed;
+  } catch { /* noop */ }
+  return fallback;
+}
+
+function saveFilterToStorage(key: string, value: string[]) {
+  if (typeof window === "undefined") return;
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* noop */ }
+}
+
 function useStickyState() {
   const [data, setDataState] = useState<AssetData | null>(null);
   const [hydrated, setHydrated] = useState(false);
@@ -65,15 +89,24 @@ function useStickyState() {
 export function AssetViewer() {
   const [data, setData, hydrated, setDataDirect] = useStickyState();
   const [edits, setEditsState] = useState<Record<string, AssetEdits>>({});
+  const defaultStatusFilter = useMemo(
+    () => [STATUS_NONE_TOKEN, ...STATUS_OPTIONS].filter((s) => s !== "Sent back to broker"),
+    [],
+  );
   const [search, setSearch] = useState("");
-  const [modelFilter, setModelFilter] = useState<string[]>([]);
-  const [userFilter, setUserFilter] = useState<string[]>([]);
-  const [sourceFilter, setSourceFilter] = useState<string[]>([]);
+  const [modelFilter, setModelFilter] = useState<string[]>(() => loadFilterFromStorage(FILTER_STORAGE_KEYS.models, []));
+  const [userFilter, setUserFilter] = useState<string[]>(() => loadFilterFromStorage(FILTER_STORAGE_KEYS.users, []));
+  const [sourceFilter, setSourceFilter] = useState<string[]>(() => loadFilterFromStorage(FILTER_STORAGE_KEYS.sources, []));
   // Default: exclude "Sent back to broker" — show everything else (incl. no-status rows).
-  const [statusFilter, setStatusFilter] = useState<string[]>(() => {
-    const all = [STATUS_NONE_TOKEN, ...STATUS_OPTIONS];
-    return all.filter((s) => s !== "Sent back to broker");
-  });
+  const [statusFilter, setStatusFilter] = useState<string[]>(() =>
+    loadFilterFromStorage(FILTER_STORAGE_KEYS.status, defaultStatusFilter),
+  );
+
+  // Persist filter selections so they survive reloads.
+  useEffect(() => { saveFilterToStorage(FILTER_STORAGE_KEYS.models, modelFilter); }, [modelFilter]);
+  useEffect(() => { saveFilterToStorage(FILTER_STORAGE_KEYS.users, userFilter); }, [userFilter]);
+  useEffect(() => { saveFilterToStorage(FILTER_STORAGE_KEYS.sources, sourceFilter); }, [sourceFilter]);
+  useEffect(() => { saveFilterToStorage(FILTER_STORAGE_KEYS.status, statusFilter); }, [statusFilter]);
   const [exceptionsOnly, setExceptionsOnly] = useState(false);
   const [activeCard, setActiveCard] = useState<KpiKey | null>(null);
   const [sort, setSort] = useState<SortState>({ column: "", dir: null });
@@ -464,12 +497,21 @@ export function AssetViewer() {
     setModelFilter([]);
     setUserFilter([]);
     setSourceFilter([]);
-    setStatusFilter([STATUS_NONE_TOKEN, ...STATUS_OPTIONS].filter((s) => s !== "Sent back to broker"));
+    setStatusFilter(defaultStatusFilter);
     setExceptionsOnly(false);
     setSort({ column: "", dir: null });
     setConfirmClear(false);
     toast.success("Local data cleared.");
-  }, [setData]);
+  }, [setData, defaultStatusFilter]);
+
+  const clearAllFilters = useCallback(() => {
+    setSearch("");
+    setModelFilter([]);
+    setUserFilter([]);
+    setSourceFilter([]);
+    setStatusFilter([]);
+    setExceptionsOnly(false);
+  }, []);
 
   const toggleSort = useCallback((col: string) => {
     setSort((prev) => {
@@ -548,7 +590,45 @@ export function AssetViewer() {
       });
     }
     return result;
-  }, [rows, columns, search, modelFilter, userFilter, sourceFilter, exceptionsOnly, activeCard, sort, edits]);
+  }, [rows, columns, search, modelFilter, userFilter, sourceFilter, statusFilter, exceptionsOnly, activeCard, sort, edits]);
+
+  const activeChips = useMemo<FilterChip[]>(() => {
+    const out: FilterChip[] = [];
+    for (const v of modelFilter) {
+      out.push({ key: `model:${v}`, group: "Model", value: v, onRemove: () => setModelFilter((p) => p.filter((x) => x !== v)) });
+    }
+    for (const v of userFilter) {
+      out.push({ key: `user:${v}`, group: "User", value: v, onRemove: () => setUserFilter((p) => p.filter((x) => x !== v)) });
+    }
+    for (const v of sourceFilter) {
+      out.push({ key: `source:${v}`, group: "Source", value: v, onRemove: () => setSourceFilter((p) => p.filter((x) => x !== v)) });
+    }
+    // Status defaults to "all except Sent back to broker" — only show chips when the user
+    // diverges from that default, otherwise the bar would always be cluttered.
+    const statusSorted = [...statusFilter].sort();
+    const defaultSorted = [...defaultStatusFilter].sort();
+    const isStatusDefault =
+      statusSorted.length === defaultSorted.length &&
+      statusSorted.every((v, i) => v === defaultSorted[i]);
+    if (!isStatusDefault) {
+      for (const v of statusFilter) {
+        const label = v === STATUS_NONE_TOKEN ? "No status set" : v;
+        out.push({
+          key: `status:${v}`,
+          group: "Status",
+          value: label,
+          onRemove: () => setStatusFilter((p) => p.filter((x) => x !== v)),
+        });
+      }
+    }
+    if (search.trim()) {
+      out.push({ key: "search", group: "Search", value: search.trim(), onRemove: () => setSearch("") });
+    }
+    if (exceptionsOnly) {
+      out.push({ key: "exceptions", group: "Show", value: "Exceptions only", onRemove: () => setExceptionsOnly(false) });
+    }
+    return out;
+  }, [modelFilter, userFilter, sourceFilter, statusFilter, defaultStatusFilter, search, exceptionsOnly]);
 
   return (
     <TooltipProvider>
@@ -665,6 +745,7 @@ export function AssetViewer() {
                     toast.success(n > 0 ? `Forgot ${n} saved mapping(s).` : "No saved mappings to clear.");
                   }}
                 />
+                <ActiveFilterChips chips={activeChips} onClearAll={clearAllFilters} />
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>{filtered.length.toLocaleString()} of {rows.length.toLocaleString()} rows</span>
                   <span className="hidden sm:flex items-center gap-3 text-muted-foreground/70">
