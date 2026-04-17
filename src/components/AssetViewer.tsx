@@ -40,6 +40,7 @@ import { AddRowDialog } from "./AddRowDialog";
 import { ImportDebugger } from "./ImportDebugger";
 import { ColumnMappingDialog } from "./ColumnMappingDialog";
 import { InitialsPromptDialog } from "./InitialsPromptDialog";
+import { WhatsNewToast } from "./WhatsNewToast";
 
 import { toast } from "sonner";
 
@@ -845,6 +846,7 @@ export function AssetViewer() {
           onCancel={handleMappingCancel}
         />
 
+        <WhatsNewToast />
         <InitialsPromptDialog
           open={initialsOpen}
           onConfirm={handleInitialsConfirm}
