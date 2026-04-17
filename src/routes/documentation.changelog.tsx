@@ -1,8 +1,10 @@
+import { useEffect } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { DocVersionBadge } from "@/components/DocVersionBadge";
+import { markVersionSeen } from "@/lib/version-state";
 
 export const Route = createFileRoute("/documentation/changelog")({
   component: ChangelogPage,
