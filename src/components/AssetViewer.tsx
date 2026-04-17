@@ -52,11 +52,11 @@ function useStickyState() {
       if (!saveData(d)) toast.error("Data too large for local storage.");
     }
   }, []);
-  return [data, setData, hydrated] as const;
+  return [data, setData, hydrated, setDataState] as const;
 }
 
 export function AssetViewer() {
-  const [data, setData, hydrated] = useStickyState();
+  const [data, setData, hydrated, setDataDirect] = useStickyState();
   const [edits, setEditsState] = useState<Record<string, AssetEdits>>({});
   const [search, setSearch] = useState("");
   const [modelFilter, setModelFilter] = useState("__all__");
