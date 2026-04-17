@@ -19,7 +19,7 @@ import {
 import { exportCSV } from "@/lib/csv-export";
 import { KpiCards } from "./KpiCards";
 import type { KpiKey } from "./KpiCards";
-import { FilterBar } from "./FilterBar";
+import { FilterBar, STATUS_NONE_TOKEN } from "./FilterBar";
 import { AssetTable } from "./AssetTable";
 import { AuditDashboard } from "./AuditDashboard";
 import { SheetPicker } from "./SheetPicker";
@@ -70,7 +70,7 @@ export function AssetViewer() {
   const [sourceFilter, setSourceFilter] = useState<string[]>([]);
   // Default: exclude "Sent back to broker" — show everything else (incl. no-status rows).
   const [statusFilter, setStatusFilter] = useState<string[]>(() => {
-    const all = [STATUS_NONE_TOKEN_FOR_INIT, ...STATUS_OPTIONS];
+    const all = [STATUS_NONE_TOKEN, ...STATUS_OPTIONS];
     return all.filter((s) => s !== "Sent back to broker");
   });
   const [exceptionsOnly, setExceptionsOnly] = useState(false);
@@ -460,10 +460,10 @@ export function AssetViewer() {
     setData(null);
     setEditsState({});
     setSearch("");
-    setModelFilter("__all__");
-    setUserFilter("__all__");
-    setSourceFilter("__all__");
-    setStatusFilter("__all__");
+    setModelFilter([]);
+    setUserFilter([]);
+    setSourceFilter([]);
+    setStatusFilter([STATUS_NONE_TOKEN, ...STATUS_OPTIONS].filter((s) => s !== "Sent back to broker"));
     setExceptionsOnly(false);
     setSort({ column: "", dir: null });
     setConfirmClear(false);
@@ -506,15 +506,15 @@ export function AssetViewer() {
     else if (activeCard === "users") result = result.filter((r) => r.user !== "");
     else if (activeCard === "models") result = result.filter((r) => r.modell !== "");
     if (exceptionsOnly && activeCard !== "exceptions") result = result.filter((r) => r.exceptions.length > 0);
-    if (modelFilter !== "__all__") result = result.filter((r) => r.modell === modelFilter);
-    if (userFilter !== "__all__") result = result.filter((r) => r.user === userFilter);
-    if (sourceFilter !== "__all__") result = result.filter((r) => r.sourceFile === sourceFilter);
-    if (statusFilter !== "__all__") {
-      if (statusFilter === "__none__") {
-        result = result.filter((r) => !(edits[getEditKey(r.id)]?.status));
-      } else {
-        result = result.filter((r) => edits[getEditKey(r.id)]?.status === statusFilter);
-      }
+    if (modelFilter.length > 0) result = result.filter((r) => modelFilter.includes(r.modell));
+    if (userFilter.length > 0) result = result.filter((r) => userFilter.includes(r.user));
+    if (sourceFilter.length > 0) result = result.filter((r) => sourceFilter.includes(r.sourceFile));
+    if (statusFilter.length > 0) {
+      result = result.filter((r) => {
+        const s = edits[getEditKey(r.id)]?.status ?? "";
+        if (s === "") return statusFilter.includes(STATUS_NONE_TOKEN);
+        return statusFilter.includes(s);
+      });
     }
     if (search.trim()) {
       const q = search.trim().toLowerCase();
