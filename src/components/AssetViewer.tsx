@@ -45,6 +45,29 @@ import { WhatsNewToast } from "./WhatsNewToast";
 
 import { toast } from "sonner";
 
+const FILTER_STORAGE_KEYS = {
+  models: "hq_filter_models",
+  users: "hq_filter_users",
+  sources: "hq_filter_sources",
+  status: "hq_filter_status",
+} as const;
+
+function loadFilterFromStorage(key: string, fallback: string[]): string[] {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.every((v) => typeof v === "string")) return parsed;
+  } catch { /* noop */ }
+  return fallback;
+}
+
+function saveFilterToStorage(key: string, value: string[]) {
+  if (typeof window === "undefined") return;
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* noop */ }
+}
+
 function useStickyState() {
   const [data, setDataState] = useState<AssetData | null>(null);
   const [hydrated, setHydrated] = useState(false);
