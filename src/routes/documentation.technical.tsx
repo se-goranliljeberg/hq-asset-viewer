@@ -28,7 +28,7 @@ const sections = [
   { id: "dependencies", label: "7. Dependencies" },
   { id: "compatibility", label: "8. Browser Compatibility" },
   { id: "limitations", label: "9. Limitations" },
-  { id: "deployment", label: "10. Deployment" },
+  { id: "deployment", label: "10. Deployment & Versioning" },
   { id: "audit", label: "11. Audit Log" },
   { id: "export", label: "12. Export Controls" },
   { id: "approval", label: "13. Approval Checklist" },
@@ -154,6 +154,8 @@ function TechnicalDoc() {
           <li><code>hq_asset_column_widths</code> — user&rsquo;s column widths</li>
           <li><code>hq_mapping_*</code> — saved column mappings keyed by header-set hash</li>
           <li><code>hq_canonical_migrated_v1</code> — one-time migration flag</li>
+          <li><code>hq_audit_user_initials</code> — initials shown in audit log entries</li>
+          <li><code>hq_last_seen_version</code> — last app version seen by this browser (used by the &ldquo;What&rsquo;s new&rdquo; toast)</li>
         </ul>
         <p className="mt-2">
           Data never leaves the browser. There is no IndexedDB, no cookies, no Service Worker
@@ -261,11 +263,38 @@ function TechnicalDoc() {
         </ul>
       </Section>
 
-      <Section id="deployment" title="10. Deployment">
+      <Section id="deployment" title="10. Deployment & Versioning">
         <p>
           Built with <code>bun run build</code> (or <code>npm run build</code>) and deployed to
           Cloudflare Workers. The Worker only serves static SSR output and assets — no server-side
           business logic, no environment secrets are exposed at runtime.
+        </p>
+        <h3 className="font-semibold mt-4 mb-2">Version bump helper</h3>
+        <p>
+          The single source of truth for the application version is the <code>version</code> field
+          in <code>package.json</code>. It is consumed by the documentation badge
+          (<code>DocVersionBadge</code>) and by the in-app &ldquo;What&rsquo;s new&rdquo; toast
+          (<code>WhatsNewToast</code>). After any meaningful change, run one of the helper scripts
+          to bump it before deploying:
+        </p>
+        <pre className="rounded-md bg-secondary/40 border border-border p-3 text-xs mt-2">
+{`npm run bump          # patch  e.g. 0.2.0 → 0.2.1
+npm run bump:minor    # minor  e.g. 0.2.0 → 0.3.0
+npm run bump:major    # major  e.g. 0.2.0 → 1.0.0`}
+        </pre>
+        <p className="mt-2">
+          The script lives at <code>scripts/bump-version.mjs</code>. It only edits
+          <code> package.json</code>; add a matching entry to
+          <code> src/routes/documentation.changelog.tsx</code> in the same change so the changelog
+          stays in sync.
+        </p>
+        <h3 className="font-semibold mt-4 mb-2">&ldquo;What&rsquo;s new&rdquo; notification</h3>
+        <p>
+          On load, the app compares the current <code>package.json</code> version against the value
+          stored under <code>hq_last_seen_version</code> in <code>localStorage</code>. If the stored
+          version is older (or missing), a one-time toast appears with a link to the changelog.
+          Dismissing or auto-closing the toast records the current version, so it will not appear
+          again until the next bump. The check is purely client-side; no telemetry is sent.
         </p>
       </Section>
 
