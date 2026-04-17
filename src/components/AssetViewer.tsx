@@ -20,6 +20,7 @@ import { exportCSV } from "@/lib/csv-export";
 import { KpiCards } from "./KpiCards";
 import type { KpiKey } from "./KpiCards";
 import { FilterBar, STATUS_NONE_TOKEN } from "./FilterBar";
+import { ActiveFilterChips, type FilterChip } from "./ActiveFilterChips";
 import { AssetTable } from "./AssetTable";
 import { AuditDashboard } from "./AuditDashboard";
 import { SheetPicker } from "./SheetPicker";
@@ -65,15 +66,18 @@ function useStickyState() {
 export function AssetViewer() {
   const [data, setData, hydrated, setDataDirect] = useStickyState();
   const [edits, setEditsState] = useState<Record<string, AssetEdits>>({});
+  const defaultStatusFilter = useMemo(
+    () => [STATUS_NONE_TOKEN, ...STATUS_OPTIONS].filter((s) => s !== "Sent back to broker"),
+    [],
+  );
   const [search, setSearch] = useState("");
-  const [modelFilter, setModelFilter] = useState<string[]>([]);
-  const [userFilter, setUserFilter] = useState<string[]>([]);
-  const [sourceFilter, setSourceFilter] = useState<string[]>([]);
+  const [modelFilter, setModelFilter] = useState<string[]>(() => loadFilterFromStorage("hq_filter_models", []));
+  const [userFilter, setUserFilter] = useState<string[]>(() => loadFilterFromStorage("hq_filter_users", []));
+  const [sourceFilter, setSourceFilter] = useState<string[]>(() => loadFilterFromStorage("hq_filter_sources", []));
   // Default: exclude "Sent back to broker" — show everything else (incl. no-status rows).
-  const [statusFilter, setStatusFilter] = useState<string[]>(() => {
-    const all = [STATUS_NONE_TOKEN, ...STATUS_OPTIONS];
-    return all.filter((s) => s !== "Sent back to broker");
-  });
+  const [statusFilter, setStatusFilter] = useState<string[]>(() =>
+    loadFilterFromStorage("hq_filter_status", [STATUS_NONE_TOKEN, ...STATUS_OPTIONS].filter((s) => s !== "Sent back to broker")),
+  );
   const [exceptionsOnly, setExceptionsOnly] = useState(false);
   const [activeCard, setActiveCard] = useState<KpiKey | null>(null);
   const [sort, setSort] = useState<SortState>({ column: "", dir: null });
