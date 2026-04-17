@@ -350,9 +350,38 @@ export function AssetViewer() {
   const handleImportEnrich = useCallback(() => {
     setImportModeOpen(false);
     if (pendingParsed.current && data) {
-      const merged = enrichWithUsers(data, pendingParsed.current);
+      const incoming = pendingParsed.current;
+      const merged = enrichWithUsers(data, incoming);
       setData(merged);
-      applySeedEdits(pendingSeedEdits.current);
+      // Enrich keeps existing row ids; only unmatched incoming rows are appended
+      // with new ids starting at maxExistingId + 1. Remap seed edits so any
+      // imported Status / Warranty values land on the right rows.
+      const maxExistingId = data.rows.reduce((m, r) => Math.max(m, r.id), -1);
+      const matchedUserKeys = new Set<string>();
+      const byUserExisting = new Map<string, number>();
+      const byEmailExisting = new Map<string, number>();
+      for (const r of data.rows) {
+        if (r.user) byUserExisting.set(r.user.toLowerCase(), r.id);
+        const e = (r.raw["Email"] ?? "").toLowerCase();
+        if (e) byEmailExisting.set(e, r.id);
+      }
+      const remappedSeed: Record<string, AssetEdits> = {};
+      let unmatchedCounter = 0;
+      incoming.rows.forEach((row, i) => {
+        const seed = pendingSeedEdits.current[String(i)];
+        if (!seed) return;
+        const u = row.user.toLowerCase();
+        const e = (row.raw["Email"] ?? "").toLowerCase();
+        const matchId = (u && byUserExisting.get(u)) ?? (e && byEmailExisting.get(e)) ?? null;
+        if (matchId !== null && !matchedUserKeys.has(String(matchId))) {
+          matchedUserKeys.add(String(matchId));
+          remappedSeed[String(matchId)] = seed;
+        } else {
+          remappedSeed[String(maxExistingId + 1 + unmatchedCounter)] = seed;
+          unmatchedCounter++;
+        }
+      });
+      applySeedEdits(remappedSeed);
       toast.success(`Enriched users — total rows: ${merged.rows.length}`);
       pendingParsed.current = null;
       pendingSeedEdits.current = {};
@@ -374,10 +403,20 @@ export function AssetViewer() {
   const handleImportAdd = useCallback(() => {
     setImportModeOpen(false);
     if (pendingParsed.current && data) {
-      const merged = mergeData(data, pendingParsed.current);
+      const incoming = pendingParsed.current;
+      const merged = mergeData(data, incoming);
       setData(merged);
-      applySeedEdits(pendingSeedEdits.current);
-      toast.success(`Added ${pendingParsed.current.rows.length} rows (total: ${merged.rows.length})`);
+      // mergeData reindexes incoming rows: new id = maxExistingId + 1 + originalIndex.
+      const maxExistingId = data.rows.reduce((m, r) => Math.max(m, r.id), -1);
+      const remappedSeed: Record<string, AssetEdits> = {};
+      for (const [oldKey, seed] of Object.entries(pendingSeedEdits.current)) {
+        const oldIdx = Number(oldKey);
+        if (Number.isFinite(oldIdx)) {
+          remappedSeed[String(maxExistingId + 1 + oldIdx)] = seed;
+        }
+      }
+      applySeedEdits(remappedSeed);
+      toast.success(`Added ${incoming.rows.length} rows (total: ${merged.rows.length})`);
       pendingParsed.current = null;
       pendingSeedEdits.current = {};
     }
