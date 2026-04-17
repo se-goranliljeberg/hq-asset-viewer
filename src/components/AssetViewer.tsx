@@ -517,9 +517,20 @@ export function AssetViewer() {
         <AlertDialog open={importModeOpen} onOpenChange={setImportModeOpen}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Data already loaded</AlertDialogTitle>
+              <AlertDialogTitle>
+                {pendingIsUsersFile ? "Users file detected" : "Data already loaded"}
+              </AlertDialogTitle>
               <AlertDialogDescription>
-                Would you like to replace all existing data or add the new rows to the current dataset? Duplicates will be flagged as exceptions.
+                {pendingIsUsersFile ? (
+                  <>
+                    This file looks like a user list (no Computername column). You can{" "}
+                    <strong>enrich existing rows</strong> with email/department/creation date
+                    by matching on User or Email. Unmatched users will be added as new rows
+                    flagged "User without computer".
+                  </>
+                ) : (
+                  <>Would you like to replace all existing data or add the new rows to the current dataset? Duplicates will be flagged as exceptions.</>
+                )}
                 {hasManualOrEdits && (
                   <span className="block mt-2 font-semibold text-destructive">
                     ⚠ Replacing will discard your manual entries and edits.
@@ -529,10 +540,15 @@ export function AssetViewer() {
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
+              {pendingIsUsersFile && (
+                <AlertDialogAction onClick={handleImportEnrich}>
+                  Enrich Users
+                </AlertDialogAction>
+              )}
               <AlertDialogAction onClick={handleImportAdd} className={buttonVariants({ variant: "outline" })}>
                 Add Data
               </AlertDialogAction>
-              <AlertDialogAction onClick={handleImportReplace}>
+              <AlertDialogAction onClick={handleImportReplace} className={buttonVariants({ variant: pendingIsUsersFile ? "outline" : "default" })}>
                 Replace All
               </AlertDialogAction>
             </AlertDialogFooter>
