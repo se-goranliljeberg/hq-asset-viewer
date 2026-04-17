@@ -18,6 +18,8 @@ import { Input } from "@/components/ui/input";
 import { CalendarIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format, parseISO } from "date-fns";
+import { CommentCell } from "./CommentCell";
+import { parseEntries } from "@/lib/comment-log";
 
 interface Props {
   rows: AssetRow[];
@@ -27,6 +29,7 @@ interface Props {
   edits: Record<string, AssetEdits>;
   onEdit: (rowId: number, field: keyof AssetEdits, value: string) => void;
   onCellEdit: (rowId: number, column: string, value: string) => void;
+  onUndoLast: (rowId: number) => void;
   selectedIds: Set<number>;
   onSelectionChange: (ids: Set<number>) => void;
 }
