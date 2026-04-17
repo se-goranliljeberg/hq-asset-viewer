@@ -408,14 +408,17 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
 
                   if (col === COMMENTS_COL) {
                     const val = rowEdits?.comment ?? "";
+                    const entries = parseEntries(val);
+                    const canUndo = entries.some((e) => !e.isNote && !!e.field);
                     return (
-                      <InlineCell
+                      <CommentCell
                         key={col}
                         value={val}
                         width={w}
-                        col={col}
                         rowId={row.id}
-                        onCellEdit={(rid, _c, v) => onEdit(rid, "comment", v)}
+                        onEdit={(rid, v) => onEdit(rid, "comment", v)}
+                        onUndo={onUndoLast}
+                        canUndo={canUndo}
                       />
                     );
                   }
