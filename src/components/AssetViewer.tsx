@@ -1,10 +1,17 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import type { AssetData, AssetRow, SortState } from "@/lib/asset-types";
 import type { AssetEdits, AssetStatus } from "@/lib/asset-edits";
-import { saveData, loadData, clearData, clearColumnOrder } from "@/lib/asset-store";
+import {
+  saveData, loadData, clearData, clearColumnOrder,
+  loadMapping, saveMapping, clearAllMappings,
+  isMigrated, markMigrated,
+} from "@/lib/asset-store";
 import { loadEdits, saveEdits, clearEdits, getEditKey, STATUS_OPTIONS } from "@/lib/asset-edits";
-import { getSheetNames, parseSheet, mergeData, enrichWithUsers } from "@/lib/excel-parser";
-import type { ParseResult } from "@/lib/excel-parser";
+import {
+  getSheetNames, parseSheetWithMapping, mergeData, enrichWithUsers,
+  inspectSheet, headerSetHash, migrateToCanonical,
+  type Mapping, type ParseResult,
+} from "@/lib/excel-parser";
 import { exportCSV } from "@/lib/csv-export";
 import { KpiCards } from "./KpiCards";
 import type { KpiKey } from "./KpiCards";
@@ -26,6 +33,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Upload, Trash2, Download, ShieldCheck, RefreshCw, Plus, Bug } from "lucide-react";
 import { AddRowDialog } from "./AddRowDialog";
 import { ImportDebugger } from "./ImportDebugger";
+import { ColumnMappingDialog } from "./ColumnMappingDialog";
 
 import { toast } from "sonner";
 
@@ -44,11 +52,11 @@ function useStickyState() {
       if (!saveData(d)) toast.error("Data too large for local storage.");
     }
   }, []);
-  return [data, setData, hydrated] as const;
+  return [data, setData, hydrated, setDataState] as const;
 }
 
 export function AssetViewer() {
-  const [data, setData, hydrated] = useStickyState();
+  const [data, setData, hydrated, setDataDirect] = useStickyState();
   const [edits, setEditsState] = useState<Record<string, AssetEdits>>({});
   const [search, setSearch] = useState("");
   const [modelFilter, setModelFilter] = useState("__all__");
@@ -68,8 +76,15 @@ export function AssetViewer() {
   const [pendingIsUsersFile, setPendingIsUsersFile] = useState(false);
   const pendingBuffer = useRef<ArrayBuffer | null>(null);
   const pendingFilename = useRef("");
+  const pendingSheet = useRef("");
   const pendingParsed = useRef<AssetData | null>(null);
   const pendingSeedEdits = useRef<Record<string, AssetEdits>>({});
+
+  // Mapping dialog state
+  const [mappingOpen, setMappingOpen] = useState(false);
+  const [mappingHeaders, setMappingHeaders] = useState<string[]>([]);
+  const [mappingSamples, setMappingSamples] = useState<Record<string, string>>({});
+  const [mappingInitial, setMappingInitial] = useState<Mapping | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -90,6 +105,18 @@ export function AssetViewer() {
     if (dirty) saveEdits(cleaned);
     setEditsState(cleaned);
   }, []);
+
+  // One-time canonical migration on hydrate
+  useEffect(() => {
+    if (!hydrated || !data || isMigrated()) return;
+    const { data: migrated, changed } = migrateToCanonical(data);
+    markMigrated();
+    if (changed) {
+      setDataDirect(migrated);
+      saveData(migrated);
+      toast.success("Cleaned up legacy column duplicates.");
+    }
+  }, [hydrated, data, setDataDirect]);
 
   const handleEdit = useCallback((rowId: number, field: keyof AssetEdits, value: string) => {
     setEditsState((prev) => {
@@ -219,6 +246,23 @@ export function AssetViewer() {
     toast.success(`Added manual row "${computername || "Unnamed"}"`);
   }, [data, setData]);
 
+  const openMappingFor = useCallback((buffer: ArrayBuffer, sheet: string, filename: string) => {
+    pendingBuffer.current = buffer;
+    pendingFilename.current = filename;
+    pendingSheet.current = sheet;
+    const inspected = inspectSheet(buffer, sheet);
+    if (inspected.headers.length === 0) {
+      toast.error("Sheet is empty.");
+      return;
+    }
+    const hash = headerSetHash(inspected.headers);
+    const saved = loadMapping(hash);
+    setMappingHeaders(inspected.headers);
+    setMappingSamples(inspected.samples);
+    setMappingInitial(saved);
+    setMappingOpen(true);
+  }, []);
+
   const handleFile = useCallback(async (file: File) => {
     const buffer = await file.arrayBuffer();
     const sheets = getSheetNames(buffer);
@@ -228,17 +272,35 @@ export function AssetViewer() {
       setPendingSheets(sheets);
       setSheetPickerOpen(true);
     } else {
-      applyParsed(parseSheet(buffer, sheets[0], file.name));
+      openMappingFor(buffer, sheets[0], file.name);
     }
-  }, [applyParsed]);
+  }, [openMappingFor]);
 
   const handleSheetPick = useCallback((sheet: string) => {
     setSheetPickerOpen(false);
     if (pendingBuffer.current) {
-      applyParsed(parseSheet(pendingBuffer.current, sheet, pendingFilename.current));
-      pendingBuffer.current = null;
+      openMappingFor(pendingBuffer.current, sheet, pendingFilename.current);
     }
-  }, [applyParsed]);
+  }, [openMappingFor]);
+
+  const handleMappingApply = useCallback((mapping: Mapping, remember: boolean) => {
+    setMappingOpen(false);
+    if (!pendingBuffer.current) return;
+    if (remember) saveMapping(headerSetHash(mappingHeaders), mapping);
+    const result = parseSheetWithMapping(
+      pendingBuffer.current,
+      pendingSheet.current,
+      pendingFilename.current,
+      mapping,
+    );
+    applyParsed(result);
+    pendingBuffer.current = null;
+  }, [applyParsed, mappingHeaders]);
+
+  const handleMappingCancel = useCallback(() => {
+    setMappingOpen(false);
+    pendingBuffer.current = null;
+  }, []);
 
   const onFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -440,6 +502,10 @@ export function AssetViewer() {
                     localStorage.removeItem("hq_asset_column_widths");
                     toast.success("Column layout reset — reload to apply.");
                   }}
+                  onResetMappings={() => {
+                    const n = clearAllMappings();
+                    toast.success(n > 0 ? `Forgot ${n} saved mapping(s).` : "No saved mappings to clear.");
+                  }}
                 />
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>{filtered.length.toLocaleString()} of {rows.length.toLocaleString()} rows</span>
@@ -596,6 +662,17 @@ export function AssetViewer() {
         />
 
         <ImportDebugger open={debugOpen} onOpenChange={setDebugOpen} />
+
+        <ColumnMappingDialog
+          open={mappingOpen}
+          filename={pendingFilename.current}
+          sheetName={pendingSheet.current}
+          headers={mappingHeaders}
+          samples={mappingSamples}
+          initialMapping={mappingInitial}
+          onApply={handleMappingApply}
+          onCancel={handleMappingCancel}
+        />
       </div>
     </TooltipProvider>
   );

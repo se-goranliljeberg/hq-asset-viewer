@@ -6,7 +6,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Upload, AlertTriangle, CheckCircle2 } from "lucide-react";
-import { normalizeDate } from "@/lib/excel-parser";
+import { normalizeDate, suggestMapping, CANONICAL_FIELDS, type MappingDetection } from "@/lib/excel-parser";
 
 interface Props {
   open: boolean;
@@ -21,26 +21,27 @@ interface SheetReport {
   preview: Record<string, unknown>[];
   warnings: string[];
   detectedAs: string;
+  mapping: Record<string, MappingDetection>;
 }
 
-const DATE_HEADER_HINTS = ["date", "warranty", "created", "creation"];
+const DATE_HEADER_HINTS = ["date", "warranty", "created", "creation", "last logon", "last activity"];
 
 function isDateHeader(name: string): boolean {
   const n = name.toLowerCase();
   return DATE_HEADER_HINTS.some((h) => n.includes(h));
 }
 
-function detectFileType(columns: string[], rows: Record<string, unknown>[]): string {
-  const lower = columns.map((c) => c.toLowerCase());
-  const hasCN = lower.includes("computername");
-  const hasUserInfo = lower.some((c) => ["email", "department", "creation date", "createdate"].includes(c));
+function detectFileType(mapping: Record<string, MappingDetection>, columns: string[], rows: Record<string, unknown>[]): string {
+  const mappedFields = new Set(Object.values(mapping).map((m) => m.field));
+  const hasCN = mappedFields.has("Computername");
+  const hasUserInfo = ["Email", "Department", "AD Create.Date"].some((f) => mappedFields.has(f as never));
   if (!hasCN && hasUserInfo) return "Users-only file (will trigger Enrich Users mode)";
   if (hasCN) {
-    const allEmpty = rows.every((r) => {
-      const cnKey = columns.find((c) => c.toLowerCase() === "computername") ?? "";
-      return !String(r[cnKey] ?? "").trim();
-    });
-    if (allEmpty && hasUserInfo) return "Users-only file (Computername present but empty)";
+    const cnHeader = Object.entries(mapping).find(([, m]) => m.field === "Computername")?.[0];
+    if (cnHeader) {
+      const allEmpty = rows.every((r) => !String(r[cnHeader] ?? "").trim());
+      if (allEmpty && hasUserInfo) return "Users-only file (Computername present but empty)";
+    }
     return "HQ asset inventory file";
   }
   return "Unknown — no Computername or user-info columns detected";
@@ -67,8 +68,7 @@ export function ImportDebugger({ open, onOpenChange }: Props) {
         if (jsonRows.length === 0) {
           newReports.push({
             sheetName, rowCount: 0, columns: [], dateColumns: [], preview: [],
-            warnings: ["Empty sheet"],
-            detectedAs: "—",
+            warnings: ["Empty sheet"], detectedAs: "—", mapping: {},
           });
           continue;
         }
@@ -76,12 +76,10 @@ export function ImportDebugger({ open, onOpenChange }: Props) {
         const columns = Object.keys(jsonRows[0]);
         const warnings: string[] = [];
 
-        // Look for problematic columns
         for (const col of columns) {
           if (col !== col.trim()) warnings.push(`Column "${col}" has leading/trailing whitespace`);
         }
 
-        // Inspect date-ish columns
         const dateColumns = columns
           .filter(isDateHeader)
           .map((col) => {
@@ -89,9 +87,7 @@ export function ImportDebugger({ open, onOpenChange }: Props) {
               const raw = r[col];
               const type = raw === null || raw === undefined
                 ? "null"
-                : raw instanceof Date
-                  ? "Date"
-                  : typeof raw;
+                : raw instanceof Date ? "Date" : typeof raw;
               const normalized = normalizeDate(raw);
               return { raw, type, normalized, ok: !raw || !!normalized };
             });
@@ -105,11 +101,28 @@ export function ImportDebugger({ open, onOpenChange }: Props) {
           }
         }
 
-        // Check for export-appended columns (re-import)
-        const exportCols = ["Status", "Warranty until", "Exceptions", "Source file"];
+        const exportCols = ["Status", "Warranty until", "Exceptions", "Comments", "Source file"];
         const reimportedCols = exportCols.filter((c) => columns.includes(c));
         if (reimportedCols.length) {
           warnings.push(`Looks like a re-imported export — these columns will be stripped: ${reimportedCols.join(", ")}`);
+        }
+
+        const mapping = suggestMapping(columns);
+        // Conflict warnings
+        const fieldCounts = new Map<string, string[]>();
+        for (const [h, det] of Object.entries(mapping)) {
+          if (det.field === "ignore") continue;
+          const arr = fieldCounts.get(det.field) ?? [];
+          arr.push(h);
+          fieldCounts.set(det.field, arr);
+        }
+        for (const [field, hs] of fieldCounts.entries()) {
+          if (hs.length > 1) warnings.push(`Conflict: ${hs.length} headers map to "${field}" (${hs.join(", ")})`);
+        }
+        // Unmapped fields warning (informational)
+        const unmapped = columns.filter((c) => mapping[c]?.field === "ignore");
+        if (unmapped.length) {
+          warnings.push(`${unmapped.length} header(s) will be ignored: ${unmapped.join(", ")}`);
         }
 
         newReports.push({
@@ -119,7 +132,8 @@ export function ImportDebugger({ open, onOpenChange }: Props) {
           dateColumns,
           preview: jsonRows.slice(0, 5),
           warnings,
-          detectedAs: detectFileType(columns, jsonRows),
+          detectedAs: detectFileType(mapping, columns, jsonRows),
+          mapping,
         });
       }
 
@@ -129,7 +143,7 @@ export function ImportDebugger({ open, onOpenChange }: Props) {
         sheetName: "Error",
         rowCount: 0, columns: [], dateColumns: [], preview: [],
         warnings: [`Failed to parse: ${err instanceof Error ? err.message : String(err)}`],
-        detectedAs: "—",
+        detectedAs: "—", mapping: {},
       }]);
     } finally {
       setLoading(false);
@@ -149,7 +163,7 @@ export function ImportDebugger({ open, onOpenChange }: Props) {
           <DialogTitle>Import Debugger</DialogTitle>
           <DialogDescription>
             Inspect an Excel file before importing. Shows detected file type, columns, sample values,
-            date parsing results, and any warnings — without changing your loaded data.
+            date parsing, and the suggested mapping to canonical fields — without changing your data.
           </DialogDescription>
         </DialogHeader>
 
@@ -185,9 +199,7 @@ export function ImportDebugger({ open, onOpenChange }: Props) {
                       <AlertTriangle className="h-4 w-4" /> Warnings
                     </div>
                     <ul className="text-xs space-y-1 list-disc list-inside">
-                      {r.warnings.map((w, i) => (
-                        <li key={i}>{w}</li>
-                      ))}
+                      {r.warnings.map((w, i) => (<li key={i}>{w}</li>))}
                     </ul>
                   </div>
                 )}
@@ -197,6 +209,50 @@ export function ImportDebugger({ open, onOpenChange }: Props) {
                     <CheckCircle2 className="h-4 w-4" /> No issues detected.
                   </div>
                 )}
+
+                <div>
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Detected mapping</h4>
+                  <div className="rounded-md border border-border overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead className="bg-muted/50">
+                        <tr>
+                          <th className="text-left px-3 py-1.5">Source header</th>
+                          <th className="text-left px-3 py-1.5">→ Canonical field</th>
+                          <th className="text-left px-3 py-1.5">Confidence</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {r.columns.map((c) => {
+                          const det = r.mapping[c];
+                          const field = det?.field ?? "ignore";
+                          const conf = det?.confidence ?? "none";
+                          const isCanonical = (CANONICAL_FIELDS as readonly string[]).includes(field);
+                          return (
+                            <tr key={c} className={field === "ignore" ? "bg-muted/20" : ""}>
+                              <td className="px-3 py-1 font-medium">{c}</td>
+                              <td className="px-3 py-1">
+                                {isCanonical ? (
+                                  <span className="font-mono">{field}</span>
+                                ) : (
+                                  <span className="text-muted-foreground italic">Ignore</span>
+                                )}
+                              </td>
+                              <td className="px-3 py-1">
+                                <span className={
+                                  conf === "alias" ? "text-chart-2" :
+                                  conf === "fuzzy" ? "text-chart-4" :
+                                  "text-muted-foreground"
+                                }>
+                                  {conf}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
 
                 {r.dateColumns.length > 0 && (
                   <div>

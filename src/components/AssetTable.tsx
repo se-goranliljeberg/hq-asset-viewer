@@ -38,13 +38,22 @@ const EDITABLE_COLS = ["Status", "Warranty until"] as const;
 const NON_EDITABLE_COLS = new Set(["Exceptions", "Source file"]);
 const COMMENTS_COL = "Comments";
 
-// Build the default display column order: User first, then everything else,
-// then Status / Warranty / Exceptions / Comments / Source file at the end.
+// Canonical left-to-right display order.
+const CANONICAL_ORDER = [
+  "Username", "Name", "Computername", "Modell", "Last account activity",
+  "Status", "Warranty until", "AD Create.Date", "Company", "Email", "Department",
+] as const;
+
+// Build the default display column order: canonical fields in fixed order
+// (only those present), then any extras, then Exceptions / Comments / Source file.
 function buildDefaultOrder(columns: string[]): string[] {
-  const tail = [...EDITABLE_COLS, "Exceptions", COMMENTS_COL, "Source file"];
-  const userKey = columns.find((c) => c.toLowerCase() === "user");
-  const rest = columns.filter((c) => c !== userKey);
-  return [...(userKey ? [userKey] : []), ...rest, ...tail];
+  const present = new Set(columns);
+  const canonical = CANONICAL_ORDER.filter((c) => present.has(c));
+  const extras = columns.filter(
+    (c) => !canonical.includes(c as (typeof CANONICAL_ORDER)[number]) && !["Exceptions", COMMENTS_COL, "Source file"].includes(c),
+  );
+  const tail = ["Exceptions", COMMENTS_COL, "Source file"];
+  return [...canonical, ...extras, ...tail];
 }
 
 // Reconcile a saved order against current columns: keep saved positions where
