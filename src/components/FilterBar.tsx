@@ -1,21 +1,21 @@
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { Search, RotateCcw, Eraser } from "lucide-react";
+import { MultiSelect } from "@/components/ui/multi-select";
 
 interface Props {
   search: string;
   onSearch: (v: string) => void;
-  modelFilter: string;
-  onModelFilter: (v: string) => void;
-  userFilter: string;
-  onUserFilter: (v: string) => void;
-  sourceFilter: string;
-  onSourceFilter: (v: string) => void;
-  statusFilter: string;
-  onStatusFilter: (v: string) => void;
+  modelFilter: string[];
+  onModelFilter: (v: string[]) => void;
+  userFilter: string[];
+  onUserFilter: (v: string[]) => void;
+  sourceFilter: string[];
+  onSourceFilter: (v: string[]) => void;
+  statusFilter: string[];
+  onStatusFilter: (v: string[]) => void;
   exceptionsOnly: boolean;
   onExceptionsOnly: (v: boolean) => void;
   models: string[];
@@ -25,6 +25,8 @@ interface Props {
   onResetColumns?: () => void;
   onResetMappings?: () => void;
 }
+
+export const STATUS_NONE_TOKEN = "__none__";
 
 export function FilterBar({
   search, onSearch,
@@ -48,56 +50,44 @@ export function FilterBar({
         />
       </div>
 
-      <Select value={modelFilter} onValueChange={onModelFilter}>
-        <SelectTrigger className="w-[180px]">
-          <SelectValue placeholder="All Models" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="__all__">All Models</SelectItem>
-          {models.map((m) => (
-            <SelectItem key={m} value={m}>{m}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <MultiSelect
+        options={models}
+        selected={modelFilter}
+        onChange={onModelFilter}
+        placeholder="All Models"
+        allLabel="All Models"
+        className="w-[180px]"
+      />
 
-      <Select value={userFilter} onValueChange={onUserFilter}>
-        <SelectTrigger className="w-[180px]">
-          <SelectValue placeholder="All Users" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="__all__">All Users</SelectItem>
-          {users.map((u) => (
-            <SelectItem key={u} value={u}>{u}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <MultiSelect
+        options={users}
+        selected={userFilter}
+        onChange={onUserFilter}
+        placeholder="All Users"
+        allLabel="All Users"
+        className="w-[180px]"
+      />
 
       {sources.length > 1 && (
-        <Select value={sourceFilter} onValueChange={onSourceFilter}>
-          <SelectTrigger className="w-[200px]">
-            <SelectValue placeholder="All Sources" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__all__">All Sources</SelectItem>
-            {sources.map((s) => (
-              <SelectItem key={s} value={s}>{s}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <MultiSelect
+          options={sources}
+          selected={sourceFilter}
+          onChange={onSourceFilter}
+          placeholder="All Sources"
+          allLabel="All Sources"
+          className="w-[200px]"
+        />
       )}
 
-      <Select value={statusFilter} onValueChange={onStatusFilter}>
-        <SelectTrigger className="w-[180px]">
-          <SelectValue placeholder="All Statuses" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="__all__">All Statuses</SelectItem>
-          <SelectItem value="__none__">No status set</SelectItem>
-          {statuses.map((s) => (
-            <SelectItem key={s} value={s}>{s}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <MultiSelect
+        options={statuses}
+        selected={statusFilter}
+        onChange={onStatusFilter}
+        placeholder="All Statuses"
+        allLabel="All Statuses"
+        className="w-[200px]"
+        noneOption={{ value: STATUS_NONE_TOKEN, label: "No status set" }}
+      />
 
       <Tooltip>
         <TooltipTrigger asChild>
