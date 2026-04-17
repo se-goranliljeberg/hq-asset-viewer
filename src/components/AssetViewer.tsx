@@ -1,9 +1,9 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import type { AssetData, AssetRow, SortState } from "@/lib/asset-types";
 import type { AssetEdits, AssetStatus } from "@/lib/asset-edits";
-import { saveData, loadData, clearData } from "@/lib/asset-store";
+import { saveData, loadData, clearData, clearColumnOrder } from "@/lib/asset-store";
 import { loadEdits, saveEdits, clearEdits, getEditKey, STATUS_OPTIONS } from "@/lib/asset-edits";
-import { getSheetNames, parseSheet, mergeData } from "@/lib/excel-parser";
+import { getSheetNames, parseSheet, mergeData, enrichWithUsers } from "@/lib/excel-parser";
 import type { ParseResult } from "@/lib/excel-parser";
 import { exportCSV } from "@/lib/csv-export";
 import { KpiCards } from "./KpiCards";
@@ -63,6 +63,7 @@ export function AssetViewer() {
   const [pendingSheets, setPendingSheets] = useState<string[]>([]);
   const [importModeOpen, setImportModeOpen] = useState(false);
   const [addRowOpen, setAddRowOpen] = useState(false);
+  const [pendingIsUsersFile, setPendingIsUsersFile] = useState(false);
   const pendingBuffer = useRef<ArrayBuffer | null>(null);
   const pendingFilename = useRef("");
   const pendingParsed = useRef<AssetData | null>(null);
@@ -124,11 +125,25 @@ export function AssetViewer() {
     if (data) {
       pendingParsed.current = result.data;
       pendingSeedEdits.current = result.seedEdits;
+      setPendingIsUsersFile(result.isUsersFile);
       setImportModeOpen(true);
     } else {
       setData(result.data);
       applySeedEdits(result.seedEdits);
       toast.success(`Loaded ${result.data.rows.length} rows from "${result.data.filename}"`);
+    }
+  }, [data, setData, applySeedEdits]);
+
+  const handleImportEnrich = useCallback(() => {
+    setImportModeOpen(false);
+    if (pendingParsed.current && data) {
+      const merged = enrichWithUsers(data, pendingParsed.current);
+      setData(merged);
+      applySeedEdits(pendingSeedEdits.current);
+      toast.success(`Enriched users — total rows: ${merged.rows.length}`);
+      pendingParsed.current = null;
+      pendingSeedEdits.current = {};
+      setPendingIsUsersFile(false);
     }
   }, [data, setData, applySeedEdits]);
 
@@ -392,6 +407,11 @@ export function AssetViewer() {
                   exceptionsOnly={exceptionsOnly} onExceptionsOnly={setExceptionsOnly}
                   models={models} users={users} sources={sources}
                   statuses={[...STATUS_OPTIONS]}
+                  onResetColumns={() => {
+                    clearColumnOrder();
+                    localStorage.removeItem("hq_asset_column_widths");
+                    toast.success("Column layout reset — reload to apply.");
+                  }}
                 />
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>{filtered.length.toLocaleString()} of {rows.length.toLocaleString()} rows</span>
@@ -502,9 +522,20 @@ export function AssetViewer() {
         <AlertDialog open={importModeOpen} onOpenChange={setImportModeOpen}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Data already loaded</AlertDialogTitle>
+              <AlertDialogTitle>
+                {pendingIsUsersFile ? "Users file detected" : "Data already loaded"}
+              </AlertDialogTitle>
               <AlertDialogDescription>
-                Would you like to replace all existing data or add the new rows to the current dataset? Duplicates will be flagged as exceptions.
+                {pendingIsUsersFile ? (
+                  <>
+                    This file looks like a user list (no Computername column). You can{" "}
+                    <strong>enrich existing rows</strong> with email/department/creation date
+                    by matching on User or Email. Unmatched users will be added as new rows
+                    flagged "User without computer".
+                  </>
+                ) : (
+                  <>Would you like to replace all existing data or add the new rows to the current dataset? Duplicates will be flagged as exceptions.</>
+                )}
                 {hasManualOrEdits && (
                   <span className="block mt-2 font-semibold text-destructive">
                     ⚠ Replacing will discard your manual entries and edits.
@@ -514,10 +545,15 @@ export function AssetViewer() {
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
+              {pendingIsUsersFile && (
+                <AlertDialogAction onClick={handleImportEnrich}>
+                  Enrich Users
+                </AlertDialogAction>
+              )}
               <AlertDialogAction onClick={handleImportAdd} className={buttonVariants({ variant: "outline" })}>
                 Add Data
               </AlertDialogAction>
-              <AlertDialogAction onClick={handleImportReplace}>
+              <AlertDialogAction onClick={handleImportReplace} className={buttonVariants({ variant: pendingIsUsersFile ? "outline" : "default" })}>
                 Replace All
               </AlertDialogAction>
             </AlertDialogFooter>

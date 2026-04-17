@@ -2,7 +2,8 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Search } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Search, RotateCcw } from "lucide-react";
 
 interface Props {
   search: string;
@@ -21,6 +22,7 @@ interface Props {
   users: string[];
   sources: string[];
   statuses: string[];
+  onResetColumns?: () => void;
 }
 
 export function FilterBar({
@@ -31,6 +33,7 @@ export function FilterBar({
   statusFilter, onStatusFilter,
   exceptionsOnly, onExceptionsOnly,
   models, users, sources, statuses,
+  onResetColumns,
 }: Props) {
   return (
     <div className="flex flex-wrap items-center gap-3">
@@ -105,6 +108,17 @@ export function FilterBar({
         </TooltipTrigger>
         <TooltipContent>Show only rows with data quality issues</TooltipContent>
       </Tooltip>
+
+      {onResetColumns && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="sm" onClick={onResetColumns} className="ml-auto">
+              <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reset columns
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Reset column order and widths to defaults</TooltipContent>
+        </Tooltip>
+      )}
     </div>
   );
 }

@@ -5,6 +5,14 @@ import { STATUS_OPTIONS } from "./asset-edits";
 
 const EXPORT_EXTRA_COLS = new Set(["Status", "Warranty until", "Exceptions", "Source file"]);
 
+// Canonical column names used for users-file enrichment
+export const USER_INFO_COLUMNS = ["Email", "Department", "Creation date"] as const;
+
+const USER_KEY_ALIASES = ["user", "username", "samaccountname"];
+const EMAIL_ALIASES = ["email", "mail", "e-mail", "userprincipalname", "upn"];
+const DEPT_ALIASES = ["department", "dept", "avdelning"];
+const CREATED_ALIASES = ["creation date", "created", "createdate", "whencreated", "creationdate", "created on"];
+
 export function getSheetNames(buffer: ArrayBuffer): string[] {
   const wb = XLSX.read(buffer, { type: "array" });
   return wb.SheetNames;
@@ -13,6 +21,14 @@ export function getSheetNames(buffer: ArrayBuffer): string[] {
 export interface ParseResult {
   data: AssetData;
   seedEdits: Record<string, AssetEdits>;
+  isUsersFile: boolean;
+}
+
+function findKey(map: Record<string, string>, aliases: string[]): string | null {
+  for (const a of aliases) {
+    if (map[a]) return map[a];
+  }
+  return null;
 }
 
 export function parseSheet(buffer: ArrayBuffer, sheetName: string, filename: string): ParseResult {
@@ -21,11 +37,15 @@ export function parseSheet(buffer: ArrayBuffer, sheetName: string, filename: str
   const jsonRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
 
   if (jsonRows.length === 0) {
-    return { data: { rows: [], columns: [], filename, loadedAt: new Date().toISOString() }, seedEdits: {} };
+    return {
+      data: { rows: [], columns: [], filename, loadedAt: new Date().toISOString() },
+      seedEdits: {},
+      isUsersFile: false,
+    };
   }
 
   const originalColumns = Object.keys(jsonRows[0]);
-  const dataColumns = originalColumns.filter(c => !EXPORT_EXTRA_COLS.has(c));
+  const dataColumns = originalColumns.filter((c) => !EXPORT_EXTRA_COLS.has(c));
 
   const colMap: Record<string, string> = {};
   for (const col of dataColumns) {
@@ -34,13 +54,29 @@ export function parseSheet(buffer: ArrayBuffer, sheetName: string, filename: str
 
   const cnKey = colMap["computername"] ?? null;
   const modelKey = colMap["modell"] ?? null;
-  const userKey = colMap["user"] ?? null;
+  const userKey = findKey(colMap, USER_KEY_ALIASES);
+  const emailKey = findKey(colMap, EMAIL_ALIASES);
+  const deptKey = findKey(colMap, DEPT_ALIASES);
+  const createdKey = findKey(colMap, CREATED_ALIASES);
 
-  // Check if re-imported file has Status / Warranty columns
+  // Detect users-only file: no Computername column OR all rows have empty Computername,
+  // AND has at least one user-info column
+  const hasUserInfo = !!(emailKey || deptKey || createdKey);
+  let allCnEmpty = true;
+  if (cnKey) {
+    for (const row of jsonRows) {
+      if (String(row[cnKey] ?? "").trim() !== "") {
+        allCnEmpty = false;
+        break;
+      }
+    }
+  }
+  const isUsersFile = hasUserInfo && (!cnKey || allCnEmpty);
+
   const hasStatus = originalColumns.includes("Status");
   const hasWarranty = originalColumns.includes("Warranty until");
 
-  // First pass: collect all computernames for duplicate detection
+  // Duplicate detection by computername
   const cnCounts = new Map<string, number>();
   for (const row of jsonRows) {
     const cn = String(row[cnKey ?? ""] ?? "").trim().toLowerCase();
@@ -49,28 +85,58 @@ export function parseSheet(buffer: ArrayBuffer, sheetName: string, filename: str
 
   const seedEdits: Record<string, AssetEdits> = {};
 
+  // Build the canonical column list. Always include the three user-info columns
+  // when this is a users file, so they show in the table even if header names differ.
+  const finalCols = [...dataColumns];
+  for (const c of USER_INFO_COLUMNS) {
+    if (!finalCols.includes(c)) finalCols.push(c);
+  }
+
   const rows: AssetRow[] = jsonRows.map((row, idx) => {
     const computername = cnKey ? String(row[cnKey] ?? "").trim() : "";
     const modell = modelKey ? String(row[modelKey] ?? "").trim() : "";
     const user = userKey ? String(row[userKey] ?? "").trim() : "";
+    const email = emailKey ? String(row[emailKey] ?? "").trim() : "";
+    const department = deptKey ? String(row[deptKey] ?? "").trim() : "";
+    const createdRaw = createdKey ? row[createdKey] : "";
+    const created = createdRaw instanceof Date
+      ? createdRaw.toISOString().slice(0, 10)
+      : String(createdRaw ?? "").trim();
 
     const exceptions: string[] = [];
-    if (!user) exceptions.push("Missing user");
-    if (!modell) exceptions.push("Missing model");
-    if (computername && (cnCounts.get(computername.toLowerCase()) ?? 0) > 1) {
-      exceptions.push("Duplicate computername");
+    if (isUsersFile) {
+      if (!user) exceptions.push("Missing user");
+      // For users-only rows, no computer is the whole point — don't flag missing model/computer
+    } else {
+      if (!user) exceptions.push("Missing user");
+      if (!modell) exceptions.push("Missing model");
+      if (computername && (cnCounts.get(computername.toLowerCase()) ?? 0) > 1) {
+        exceptions.push("Duplicate computername");
+      }
+    }
+    if (isUsersFile && !computername) {
+      exceptions.push("User without computer");
     }
 
     const raw: Record<string, string> = {};
     for (const col of dataColumns) {
       raw[col] = String(row[col] ?? "").trim();
     }
+    // Normalize user-info columns under canonical names
+    if (email) raw["Email"] = email;
+    if (department) raw["Department"] = department;
+    if (created) raw["Creation date"] = created;
+    // Ensure keys exist (empty strings) for canonical cols
+    for (const c of USER_INFO_COLUMNS) {
+      if (!(c in raw)) raw[c] = "";
+    }
 
-    // Seed edits from re-imported metadata columns
     const statusVal = hasStatus ? String(row["Status"] ?? "").trim() : "";
     const warrantyVal = hasWarranty ? String(row["Warranty until"] ?? "").trim() : "";
     if (statusVal || warrantyVal) {
-      const validStatus = (STATUS_OPTIONS as readonly string[]).includes(statusVal) ? statusVal as AssetStatus : "";
+      const validStatus = (STATUS_OPTIONS as readonly string[]).includes(statusVal)
+        ? (statusVal as AssetStatus)
+        : "";
       seedEdits[String(idx)] = { status: validStatus, warrantyUntil: warrantyVal };
     }
 
@@ -78,13 +144,9 @@ export function parseSheet(buffer: ArrayBuffer, sheetName: string, filename: str
   });
 
   return {
-    data: {
-      rows,
-      columns: dataColumns,
-      filename,
-      loadedAt: new Date().toISOString(),
-    },
+    data: { rows, columns: finalCols, filename, loadedAt: new Date().toISOString() },
     seedEdits,
+    isUsersFile,
   };
 }
 
@@ -93,12 +155,10 @@ export function mergeData(existing: AssetData, incoming: AssetData): AssetData {
   const reindexed = incoming.rows.map((r, i) => ({ ...r, id: maxId + 1 + i }));
   const allRows = [...existing.rows, ...reindexed];
 
-  // Union of columns
   const colSet = new Set(existing.columns);
   for (const c of incoming.columns) colSet.add(c);
   const columns = [...colSet];
 
-  // Re-run duplicate computername detection across merged set
   const cnCounts = new Map<string, number>();
   for (const row of allRows) {
     const cn = row.computername.toLowerCase();
@@ -118,6 +178,70 @@ export function mergeData(existing: AssetData, incoming: AssetData): AssetData {
     rows: allRows,
     columns,
     filename: [existing.filename, incoming.filename].join(", "),
+    loadedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Enrich existing rows with user info (Email, Department, Creation date) by matching
+ * on User (case-insensitive) or Email. Unmatched users are appended as user-only rows
+ * with the "User without computer" exception.
+ */
+export function enrichWithUsers(existing: AssetData, incoming: AssetData): AssetData {
+  // Build lookup maps from existing rows
+  const byUser = new Map<string, AssetRow>();
+  const byEmail = new Map<string, AssetRow>();
+  for (const r of existing.rows) {
+    if (r.user) byUser.set(r.user.toLowerCase(), r);
+    const email = (r.raw["Email"] ?? "").toLowerCase();
+    if (email) byEmail.set(email, r);
+  }
+
+  const updatedRows: AssetRow[] = existing.rows.map((r) => ({ ...r, raw: { ...r.raw } }));
+  const updatedById = new Map<number, AssetRow>(updatedRows.map((r) => [r.id, r]));
+
+  let enrichedCount = 0;
+  const unmatched: AssetRow[] = [];
+
+  for (const incoming_row of incoming.rows) {
+    const u = incoming_row.user.toLowerCase();
+    const e = (incoming_row.raw["Email"] ?? "").toLowerCase();
+    const match =
+      (u && byUser.get(u)) ||
+      (e && byEmail.get(e)) ||
+      null;
+
+    if (match) {
+      const target = updatedById.get(match.id);
+      if (!target) continue;
+      for (const col of USER_INFO_COLUMNS) {
+        const val = incoming_row.raw[col] ?? "";
+        if (val && !target.raw[col]) {
+          target.raw[col] = val;
+        }
+      }
+      if (!target.user && incoming_row.user) target.user = incoming_row.user;
+      enrichedCount++;
+    } else {
+      unmatched.push(incoming_row);
+    }
+  }
+
+  const maxId = updatedRows.reduce((m, r) => Math.max(m, r.id), -1);
+  const reindexedUnmatched = unmatched.map((r, i) => ({
+    ...r,
+    id: maxId + 1 + i,
+    raw: { ...r.raw },
+  }));
+
+  const colSet = new Set(existing.columns);
+  for (const c of incoming.columns) colSet.add(c);
+  for (const c of USER_INFO_COLUMNS) colSet.add(c);
+
+  return {
+    rows: [...updatedRows, ...reindexedUnmatched],
+    columns: [...colSet],
+    filename: `${existing.filename} + ${incoming.filename} (enriched ${enrichedCount}, +${reindexedUnmatched.length} new)`,
     loadedAt: new Date().toISOString(),
   };
 }
