@@ -7,7 +7,10 @@ import {
   isMigrated, markMigrated,
 } from "@/lib/asset-store";
 import { loadEdits, saveEdits, clearEdits, getEditKey, STATUS_OPTIONS } from "@/lib/asset-edits";
-import { appendComment, describeChange } from "@/lib/comment-log";
+import {
+  appendComment, describeChange, popLastEntry,
+  getStoredInitials, setStoredInitials,
+} from "@/lib/comment-log";
 import {
   getSheetNames, parseSheetWithMapping, mergeData, enrichWithUsers,
   inspectSheet, headerSetHash, migrateToCanonical,
@@ -36,6 +39,7 @@ import { Link } from "@tanstack/react-router";
 import { AddRowDialog } from "./AddRowDialog";
 import { ImportDebugger } from "./ImportDebugger";
 import { ColumnMappingDialog } from "./ColumnMappingDialog";
+import { InitialsPromptDialog } from "./InitialsPromptDialog";
 
 import { toast } from "sonner";
 
