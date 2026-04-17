@@ -128,7 +128,7 @@ function InlineCell({ value, width, col, rowId, onCellEdit }: {
   );
 }
 
-export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellEdit, selectedIds, onSelectionChange }: Props) {
+export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellEdit, onUndoLast, selectedIds, onSelectionChange }: Props) {
   const parentRef = useRef<HTMLDivElement>(null);
 
   // Persisted column order
