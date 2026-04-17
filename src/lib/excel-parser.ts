@@ -98,15 +98,11 @@ export function parseSheet(buffer: ArrayBuffer, sheetName: string, filename: str
     const user = userKey ? String(row[userKey] ?? "").trim() : "";
     const email = emailKey ? String(row[emailKey] ?? "").trim() : "";
     const department = deptKey ? String(row[deptKey] ?? "").trim() : "";
-    const createdRaw = createdKey ? row[createdKey] : "";
-    const created = createdRaw instanceof Date
-      ? createdRaw.toISOString().slice(0, 10)
-      : String(createdRaw ?? "").trim();
+    const created = normalizeDate(createdKey ? row[createdKey] : "");
 
     const exceptions: string[] = [];
     if (isUsersFile) {
       if (!user) exceptions.push("Missing user");
-      // For users-only rows, no computer is the whole point — don't flag missing model/computer
     } else {
       if (!user) exceptions.push("Missing user");
       if (!modell) exceptions.push("Missing model");
@@ -122,17 +118,16 @@ export function parseSheet(buffer: ArrayBuffer, sheetName: string, filename: str
     for (const col of dataColumns) {
       raw[col] = String(row[col] ?? "").trim();
     }
-    // Normalize user-info columns under canonical names
     if (email) raw["Email"] = email;
     if (department) raw["Department"] = department;
     if (created) raw["Creation date"] = created;
-    // Ensure keys exist (empty strings) for canonical cols
     for (const c of USER_INFO_COLUMNS) {
       if (!(c in raw)) raw[c] = "";
     }
 
     const statusVal = hasStatus ? String(row["Status"] ?? "").trim() : "";
-    const warrantyVal = hasWarranty ? String(row["Warranty until"] ?? "").trim() : "";
+    const warrantyRaw = hasWarranty ? row["Warranty until"] : "";
+    const warrantyVal = normalizeDate(warrantyRaw);
     if (statusVal || warrantyVal) {
       const validStatus = (STATUS_OPTIONS as readonly string[]).includes(statusVal)
         ? (statusVal as AssetStatus)
