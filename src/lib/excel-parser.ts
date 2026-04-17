@@ -309,10 +309,8 @@ export function parseSheetWithMapping(
     // Seed edits from imported Status / Warranty until columns
     const statusVal = statusHeader ? String(row[statusHeader] ?? "").trim() : "";
     const warrantyVal = warrantyHeader ? normalizeDate(row[warrantyHeader]) : "";
-    if (statusVal || warrantyVal) {
-      const validStatus = (STATUS_OPTIONS as readonly string[]).includes(statusVal)
-        ? (statusVal as AssetStatus)
-        : "";
+    const validStatus = normalizeStatus(statusVal);
+    if (validStatus || warrantyVal) {
       seedEdits[String(idx)] = { status: validStatus, warrantyUntil: warrantyVal };
     }
 
