@@ -328,6 +328,9 @@ export function AssetViewer() {
         } else if (col === "Warranty until") {
           va = edits[getEditKey(a.id)]?.warrantyUntil ?? "";
           vb = edits[getEditKey(b.id)]?.warrantyUntil ?? "";
+        } else if (col === "Comments") {
+          va = edits[getEditKey(a.id)]?.comment ?? "";
+          vb = edits[getEditKey(b.id)]?.comment ?? "";
         } else {
           va = a.raw[col] ?? "";
           vb = b.raw[col] ?? "";
