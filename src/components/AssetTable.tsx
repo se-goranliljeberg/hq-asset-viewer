@@ -1,9 +1,12 @@
-import { useRef, useState, useCallback, useMemo } from "react";
+import { useRef, useState, useCallback, useMemo, useEffect } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { AssetRow, SortState } from "@/lib/asset-types";
 import type { AssetEdits } from "@/lib/asset-edits";
 import { STATUS_OPTIONS, getEditKey } from "@/lib/asset-edits";
-import { ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
+import {
+  loadColumnOrder, saveColumnOrder, loadColumnWidths, saveColumnWidths,
+} from "@/lib/asset-store";
+import { ArrowUp, ArrowDown, ArrowUpDown, GripVertical } from "lucide-react";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -33,6 +36,25 @@ const DEFAULT_COL_W = 160;
 const CHECKBOX_COL_W = 40;
 const EDITABLE_COLS = ["Status", "Warranty until"] as const;
 const NON_EDITABLE_COLS = new Set(["Exceptions", "Source file"]);
+
+// Build the default display column order: User first, then everything else,
+// then Status / Warranty / Exceptions / Source file at the end.
+function buildDefaultOrder(columns: string[]): string[] {
+  const tail = [...EDITABLE_COLS, "Exceptions", "Source file"];
+  const userKey = columns.find((c) => c.toLowerCase() === "user");
+  const rest = columns.filter((c) => c !== userKey);
+  return [...(userKey ? [userKey] : []), ...rest, ...tail];
+}
+
+// Reconcile a saved order against current columns: keep saved positions where
+// possible, append new columns at the end (before tail metadata cols).
+function reconcileOrder(saved: string[], current: string[]): string[] {
+  const all = buildDefaultOrder(current);
+  const present = new Set(all);
+  const kept = saved.filter((c) => present.has(c));
+  const appended = all.filter((c) => !kept.includes(c));
+  return [...kept, ...appended];
+}
 
 function InlineCell({ value, width, col, rowId, onCellEdit }: {
   value: string;
@@ -95,16 +117,36 @@ function InlineCell({ value, width, col, rowId, onCellEdit }: {
 
 export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellEdit, selectedIds, onSelectionChange }: Props) {
   const parentRef = useRef<HTMLDivElement>(null);
-  const displayCols = useMemo(
-    () => [...columns, ...EDITABLE_COLS, "Exceptions", "Source file"],
-    [columns],
-  );
 
+  // Persisted column order
+  const [displayCols, setDisplayCols] = useState<string[]>(() => {
+    const saved = loadColumnOrder();
+    return saved ? reconcileOrder(saved, columns) : buildDefaultOrder(columns);
+  });
+
+  // When the source columns change (new import, new fields), re-reconcile
+  useEffect(() => {
+    setDisplayCols((prev) => reconcileOrder(prev, columns));
+  }, [columns]);
+
+  // Persisted widths
   const [colWidths, setColWidths] = useState<Record<string, number>>(() => {
-    const m: Record<string, number> = {};
-    for (const c of displayCols) m[c] = DEFAULT_COL_W;
+    const saved = loadColumnWidths();
+    const m: Record<string, number> = { ...saved };
+    for (const c of buildDefaultOrder(columns)) {
+      if (m[c] === undefined) m[c] = DEFAULT_COL_W;
+    }
     return m;
   });
+
+  useEffect(() => {
+    saveColumnWidths(colWidths);
+  }, [colWidths]);
+
+  const updateOrder = useCallback((next: string[]) => {
+    setDisplayCols(next);
+    saveColumnOrder(next);
+  }, []);
 
   const totalWidth = useMemo(
     () => CHECKBOX_COL_W + displayCols.reduce((s, c) => s + (colWidths[c] ?? DEFAULT_COL_W), 0),
@@ -153,6 +195,41 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
     [colWidths],
   );
 
+  // Drag-to-reorder
+  const dragColRef = useRef<string | null>(null);
+  const [dragOverCol, setDragOverCol] = useState<string | null>(null);
+
+  const handleDragStart = useCallback((col: string, e: React.DragEvent) => {
+    dragColRef.current = col;
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", col);
+  }, []);
+
+  const handleDragOver = useCallback((col: string, e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    if (dragOverCol !== col) setDragOverCol(col);
+  }, [dragOverCol]);
+
+  const handleDragLeave = useCallback(() => {
+    setDragOverCol(null);
+  }, []);
+
+  const handleDrop = useCallback((targetCol: string, e: React.DragEvent) => {
+    e.preventDefault();
+    const sourceCol = dragColRef.current;
+    dragColRef.current = null;
+    setDragOverCol(null);
+    if (!sourceCol || sourceCol === targetCol) return;
+    const next = [...displayCols];
+    const fromIdx = next.indexOf(sourceCol);
+    const toIdx = next.indexOf(targetCol);
+    if (fromIdx === -1 || toIdx === -1) return;
+    next.splice(fromIdx, 1);
+    next.splice(toIdx, 0, sourceCol);
+    updateOrder(next);
+  }, [displayCols, updateOrder]);
+
   const sortIcon = (col: string) => {
     if (sort.column !== col || !sort.dir) return <ArrowUpDown className="h-3 w-3 opacity-40" />;
     return sort.dir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />;
@@ -176,28 +253,43 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
               aria-label="Select all"
             />
           </div>
-          {displayCols.map((col) => (
-            <div
-              key={col}
-              className="relative flex items-center gap-1 px-3 py-2.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground select-none"
-              style={{ width: colWidths[col] ?? DEFAULT_COL_W, minWidth: MIN_COL_W }}
-            >
-              <button
-                className="flex items-center gap-1 hover:text-foreground transition-colors"
-                onClick={() => onSort(col)}
-              >
-                <span className="truncate">{col}</span>
-                {sortIcon(col)}
-              </button>
+          {displayCols.map((col) => {
+            const isDragOver = dragOverCol === col;
+            return (
               <div
-                className="absolute right-0 top-1 bottom-1 w-1 cursor-col-resize hover:bg-primary/40 rounded"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  onResizeStart(col, e.clientX);
-                }}
-              />
-            </div>
-          ))}
+                key={col}
+                draggable
+                onDragStart={(e) => handleDragStart(col, e)}
+                onDragOver={(e) => handleDragOver(col, e)}
+                onDragLeave={handleDragLeave}
+                onDrop={(e) => handleDrop(col, e)}
+                className={cn(
+                  "relative flex items-center gap-1 px-3 py-2.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground select-none transition-colors",
+                  isDragOver && "bg-primary/15 ring-1 ring-primary/40 ring-inset",
+                )}
+                style={{ width: colWidths[col] ?? DEFAULT_COL_W, minWidth: MIN_COL_W }}
+                title="Drag to reorder"
+              >
+                <GripVertical className="h-3 w-3 opacity-30 cursor-grab active:cursor-grabbing shrink-0" />
+                <button
+                  className="flex items-center gap-1 hover:text-foreground transition-colors min-w-0"
+                  onClick={() => onSort(col)}
+                >
+                  <span className="truncate">{col}</span>
+                  {sortIcon(col)}
+                </button>
+                <div
+                  className="absolute right-0 top-1 bottom-1 w-1 cursor-col-resize hover:bg-primary/40 rounded"
+                  draggable={false}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onResizeStart(col, e.clientX);
+                  }}
+                />
+              </div>
+            );
+          })}
         </div>
 
         {/* Virtual rows */}
