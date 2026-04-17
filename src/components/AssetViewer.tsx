@@ -89,6 +89,7 @@ function useStickyState() {
 
 export function AssetViewer() {
   const [data, setData, hydrated, setDataDirect] = useStickyState();
+  const hasUnseenVersion = useHasUnseenVersion();
   const [edits, setEditsState] = useState<Record<string, AssetEdits>>({});
   const defaultStatusFilter = useMemo(
     () => [STATUS_NONE_TOKEN, ...STATUS_OPTIONS].filter((s) => s !== "Sent back to broker"),
