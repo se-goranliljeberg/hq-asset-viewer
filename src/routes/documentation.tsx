@@ -16,11 +16,11 @@ function DocumentationLayout() {
   const location = useLocation();
   const path = location.pathname.replace(/\/$/, "");
 
-  const navItems = [
+  const navItems: { to: "/documentation" | "/documentation/technical" | "/documentation/user-guide"; label: string; icon: typeof BookOpen; exact?: boolean }[] = [
     { to: "/documentation", label: "Overview", icon: BookOpen, exact: true },
     { to: "/documentation/technical", label: "Technical & Security", icon: ShieldCheck },
     { to: "/documentation/user-guide", label: "User Guide", icon: FileText },
-  ] as const;
+  ];
 
   return (
     <div className="min-h-screen bg-background text-foreground">
