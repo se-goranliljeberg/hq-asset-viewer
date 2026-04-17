@@ -1,40 +1,50 @@
 
 
-# Reorder columns, import users file, drag-to-reorder columns
+# Fix duplicate Creation Date column, warranty zero, and exception labels
 
-Four related changes to the asset table:
+## Issues from screenshot
 
-## 1. Move "User" to first column
-Update the display order so `User` appears as the first data column (after the checkbox). Done by reordering the `displayCols` array in `AssetTable.tsx` — `User` is moved to the front, all other columns follow.
+1. **Duplicate Creation Date column** — The imported users file has header `Creation Date` (capital D). The parser also adds a canonical `Creation date` (lowercase d) column from `USER_INFO_COLUMNS`, plus normalizes the date into it. Result: two columns — the raw garbage one (Excel serial floats like `45779.43...`) and the correctly formatted one (`2025-05-02`). Same risk exists for `Email` vs `Email Address`, `Department` (matches), etc.
+2. **Warranty `1899-12-30`** — Excel cells with `0` get converted by `normalizeDate` (Excel serial 0 → 1899-12-30). Should treat `0`, empty, and obvious sentinel values as no warranty.
+3. **"Missing user" shown when user is present** — In `parseSheet`, a row's `user` field is read from `userKey` (literal `User`/`Username`/`sAMAccountName`). The users file column L is probably `Email Address` or similar non-standard name, so `userKey` is null and `user` ends up empty even though the email column has data. The exception is then raised incorrectly.
+4. **"Missing model" → "Missing computer"** — Per user request, rename the exception to `"Missing computer"` (and skip raising it for users-only rows where model is naturally absent).
 
-## 2. Add three new columns: Email, Department, Creation date
-Add these as standard data columns alongside the existing ones (Computername, Modell, User, etc.). They behave like normal raw columns — editable inline, included in export, filterable via search. The parser auto-picks them up if present in the imported Excel.
+## Fixes
 
-## 3. Import users-only file (enrich existing + add user-only rows)
-- Detect a "users file" by checking whether **all rows have an empty Computername** (or by a header signature: presence of `Email` / `Department` / `Created` and absence of `Computername`).
-- For each user row from the import:
-  - **Match** by `User` (case-insensitive, also try `Email` as fallback) against existing rows.
-  - **If matched**: enrich that existing row's `Email`, `Department`, `Creation date`, and `User` (if blank).
-  - **If unmatched**: append as a new row with empty Computername. Add exception `"User without computer"` so it shows in audit/exceptions filters.
-- The "Replace vs Add" dialog still appears, but a third option "**Enrich users**" is offered when a users-only file is detected — this is the recommended action for that file type.
-- Column L name lookup: case-insensitive match against `user`, `username`, `samaccountname`.
+### `src/lib/excel-parser.ts`
 
-## 4. Drag-to-reorder columns + persist order in localStorage
-- Add drag handles to column headers in `AssetTable.tsx`. Use native HTML5 drag/drop (no new library) — drag a header onto another header to swap positions.
-- Persist `columnOrder: string[]` to localStorage under key `hq_asset_column_order`. On load, apply saved order; new columns not in saved order appear at the end.
-- A small "Reset column order" button in the filter bar restores default.
-- Column widths (already in component state) get the same treatment: persist `colWidths` to localStorage under `hq_asset_column_widths` so resizing also survives reload.
+**A. Drop the original alias columns once they map to a canonical name.** When `emailKey`, `deptKey`, or `createdKey` is matched to a non-canonical header (e.g. `Email Address`, `Creation Date`), remove that original header from `dataColumns` so only the canonical `Email` / `Department` / `Creation date` column remains.
 
-## Technical notes (for reference)
+```ts
+const aliasKeysToDrop = [emailKey, deptKey, createdKey].filter(
+  (k): k is string => !!k && !USER_INFO_COLUMNS.includes(k as any)
+);
+const dataColumnsFiltered = dataColumns.filter(c => !aliasKeysToDrop.includes(c));
+```
 
-**Files modified:**
-- `src/lib/excel-parser.ts` — detect users-only files, expose helper `parseUsersFile()` returning rows tagged for enrichment vs append
-- `src/components/AssetViewer.tsx` — handle "Enrich users" import mode; merge logic for matching by user/email
-- `src/components/AssetTable.tsx` — drag handlers on headers, default User-first order, persisted widths/order
-- `src/lib/asset-store.ts` — add `loadColumnOrder` / `saveColumnOrder` / `loadColumnWidths` / `saveColumnWidths` helpers
-- `src/components/AddRowDialog.tsx` — auto-include Email / Department / Creation date inputs (it already iterates `columns`, so this is automatic once the columns exist)
+Also strip these from each row's `raw` so they don't carry duplicated values.
 
-**New exception type:** `"User without computer"` — shown in audit dashboard and filter-by-exception views.
+**B. Treat zero/sentinel as empty in `normalizeDate`.** Reject Excel serial `0` (and values < 1, which map to pre-1900) and the literal string `"0"`:
 
-**Backward compatibility:** Existing data in localStorage continues to work; missing Email/Department/Creation date columns are added on next import or appear empty in existing rows.
+```ts
+if (typeof input === "number") {
+  if (!isFinite(input) || input <= 0) return "";
+  // ...
+}
+if (s === "0") return "";
+```
+
+Also guard the resulting year — reject anything before 1970 as a sentinel.
+
+**C. Fix user detection for the users file.** When `userKey` is null but `emailKey` exists, derive the user from the email's local-part (`jdoe@skanska.com` → `jdoe`). Only raise `"Missing user"` if neither user nor email is present.
+
+**D. Rename and gate exceptions.**
+- `"Missing model"` → `"Missing computer"`
+- Only raise `"Missing computer"` when the row is NOT a users-only row (users without a computer already get `"User without computer"`)
+- Recompute `"Missing user"` after the email-derivation step
+
+### Files modified
+- `src/lib/excel-parser.ts` — alias-column dedup, zero/sentinel date handling, email→user fallback, exception relabel/gating
+
+No UI changes needed — once the parser stops emitting the duplicate `Creation Date` column, the table renders only the correct one.
 
