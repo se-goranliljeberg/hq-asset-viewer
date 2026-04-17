@@ -590,7 +590,45 @@ export function AssetViewer() {
       });
     }
     return result;
-  }, [rows, columns, search, modelFilter, userFilter, sourceFilter, exceptionsOnly, activeCard, sort, edits]);
+  }, [rows, columns, search, modelFilter, userFilter, sourceFilter, statusFilter, exceptionsOnly, activeCard, sort, edits]);
+
+  const activeChips = useMemo<FilterChip[]>(() => {
+    const out: FilterChip[] = [];
+    for (const v of modelFilter) {
+      out.push({ key: `model:${v}`, group: "Model", value: v, onRemove: () => setModelFilter((p) => p.filter((x) => x !== v)) });
+    }
+    for (const v of userFilter) {
+      out.push({ key: `user:${v}`, group: "User", value: v, onRemove: () => setUserFilter((p) => p.filter((x) => x !== v)) });
+    }
+    for (const v of sourceFilter) {
+      out.push({ key: `source:${v}`, group: "Source", value: v, onRemove: () => setSourceFilter((p) => p.filter((x) => x !== v)) });
+    }
+    // Status defaults to "all except Sent back to broker" — only show chips when the user
+    // diverges from that default, otherwise the bar would always be cluttered.
+    const statusSorted = [...statusFilter].sort();
+    const defaultSorted = [...defaultStatusFilter].sort();
+    const isStatusDefault =
+      statusSorted.length === defaultSorted.length &&
+      statusSorted.every((v, i) => v === defaultSorted[i]);
+    if (!isStatusDefault) {
+      for (const v of statusFilter) {
+        const label = v === STATUS_NONE_TOKEN ? "No status set" : v;
+        out.push({
+          key: `status:${v}`,
+          group: "Status",
+          value: label,
+          onRemove: () => setStatusFilter((p) => p.filter((x) => x !== v)),
+        });
+      }
+    }
+    if (search.trim()) {
+      out.push({ key: "search", group: "Search", value: search.trim(), onRemove: () => setSearch("") });
+    }
+    if (exceptionsOnly) {
+      out.push({ key: "exceptions", group: "Show", value: "Exceptions only", onRemove: () => setExceptionsOnly(false) });
+    }
+    return out;
+  }, [modelFilter, userFilter, sourceFilter, statusFilter, defaultStatusFilter, search, exceptionsOnly]);
 
   return (
     <TooltipProvider>
