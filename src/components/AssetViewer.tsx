@@ -662,6 +662,17 @@ export function AssetViewer() {
         />
 
         <ImportDebugger open={debugOpen} onOpenChange={setDebugOpen} />
+
+        <ColumnMappingDialog
+          open={mappingOpen}
+          filename={pendingFilename.current}
+          sheetName={pendingSheet.current}
+          headers={mappingHeaders}
+          samples={mappingSamples}
+          initialMapping={mappingInitial}
+          onApply={handleMappingApply}
+          onCancel={handleMappingCancel}
+        />
       </div>
     </TooltipProvider>
   );
