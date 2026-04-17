@@ -65,10 +65,14 @@ export function AssetViewer() {
   const [data, setData, hydrated, setDataDirect] = useStickyState();
   const [edits, setEditsState] = useState<Record<string, AssetEdits>>({});
   const [search, setSearch] = useState("");
-  const [modelFilter, setModelFilter] = useState("__all__");
-  const [userFilter, setUserFilter] = useState("__all__");
-  const [sourceFilter, setSourceFilter] = useState("__all__");
-  const [statusFilter, setStatusFilter] = useState("__all__");
+  const [modelFilter, setModelFilter] = useState<string[]>([]);
+  const [userFilter, setUserFilter] = useState<string[]>([]);
+  const [sourceFilter, setSourceFilter] = useState<string[]>([]);
+  // Default: exclude "Sent back to broker" — show everything else (incl. no-status rows).
+  const [statusFilter, setStatusFilter] = useState<string[]>(() => {
+    const all = [STATUS_NONE_TOKEN_FOR_INIT, ...STATUS_OPTIONS];
+    return all.filter((s) => s !== "Sent back to broker");
+  });
   const [exceptionsOnly, setExceptionsOnly] = useState(false);
   const [activeCard, setActiveCard] = useState<KpiKey | null>(null);
   const [sort, setSort] = useState<SortState>({ column: "", dir: null });
