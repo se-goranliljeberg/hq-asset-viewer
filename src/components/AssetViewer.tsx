@@ -840,6 +840,12 @@ export function AssetViewer() {
           onApply={handleMappingApply}
           onCancel={handleMappingCancel}
         />
+
+        <InitialsPromptDialog
+          open={initialsOpen}
+          onConfirm={handleInitialsConfirm}
+          onCancel={handleInitialsSkip}
+        />
       </div>
     </TooltipProvider>
   );
