@@ -76,8 +76,15 @@ export function AssetViewer() {
   const [pendingIsUsersFile, setPendingIsUsersFile] = useState(false);
   const pendingBuffer = useRef<ArrayBuffer | null>(null);
   const pendingFilename = useRef("");
+  const pendingSheet = useRef("");
   const pendingParsed = useRef<AssetData | null>(null);
   const pendingSeedEdits = useRef<Record<string, AssetEdits>>({});
+
+  // Mapping dialog state
+  const [mappingOpen, setMappingOpen] = useState(false);
+  const [mappingHeaders, setMappingHeaders] = useState<string[]>([]);
+  const [mappingSamples, setMappingSamples] = useState<Record<string, string>>({});
+  const [mappingInitial, setMappingInitial] = useState<Mapping | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
