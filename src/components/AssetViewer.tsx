@@ -122,7 +122,19 @@ export function AssetViewer() {
     setEditsState((prev) => {
       const key = getEditKey(rowId);
       const current = prev[key] ?? { status: "", warrantyUntil: "" };
-      const next = { ...prev, [key]: { ...current, [field]: value } };
+      const updated: AssetEdits = { ...current, [field]: value };
+      // Audit-log all edits except the comment field itself
+      if (field !== "comment" && (current[field] ?? "") !== value) {
+        const label =
+          field === "status" ? "Status" :
+          field === "warrantyUntil" ? "Warranty until" :
+          String(field);
+        updated.comment = appendComment(
+          current.comment,
+          describeChange(label, String(current[field] ?? ""), value),
+        );
+      }
+      const next = { ...prev, [key]: updated };
       saveEdits(next);
       return next;
     });
@@ -130,8 +142,10 @@ export function AssetViewer() {
 
   const handleCellEdit = useCallback((rowId: number, column: string, value: string) => {
     if (!data) return;
+    let prevValue = "";
     const updatedRows = data.rows.map((r) => {
       if (r.id !== rowId) return r;
+      prevValue = r.raw[column] ?? "";
       const newRaw = { ...r.raw, [column]: value };
       const colLower = column.toLowerCase();
       return {
@@ -143,6 +157,21 @@ export function AssetViewer() {
       };
     });
     setData({ ...data, rows: updatedRows });
+    if (prevValue !== value) {
+      setEditsState((prev) => {
+        const key = getEditKey(rowId);
+        const current = prev[key] ?? { status: "", warrantyUntil: "" };
+        const next = {
+          ...prev,
+          [key]: {
+            ...current,
+            comment: appendComment(current.comment, describeChange(column, prevValue, value)),
+          },
+        };
+        saveEdits(next);
+        return next;
+      });
+    }
   }, [data, setData]);
 
   const handleCardClick = useCallback((key: KpiKey) => {
