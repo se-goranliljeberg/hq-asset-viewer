@@ -1,73 +1,109 @@
 
+The user wants two documentation pages plus a Documentation link in the app navigation:
 
-# Manual column mapping + canonical schema
+1. **Technical/IT-Security documentation** — for IT/Security approval
+2. **User guide** — for end users using the app
 
-## What's wrong now
-- The system has only 3 canonical user-info columns (`Email`, `Department`, `Creation date`). Any unrecognized header (e.g. a second "Email" variant, or "Name"/"Company"/"Last activity") shows up as a separate raw column → duplicate `Email` columns visible.
-- The parser auto-guesses headers via aliases. When it guesses wrong, the user has no way to correct it — the bad mapping just becomes data.
-- The Import Debugger doesn't show which source headers were matched to which canonical fields.
+Let me look at the routing and main layout to figure out where to add the link.
 
-## The fix
+Key facts about this app (from context):
+- Client-side only Excel/CSV asset viewer
+- Data stored in browser localStorage only — no backend, no server, no auth
+- TanStack Start framework, deployed as static-ish on Cloudflare Worker
+- Parses .xlsx files locally with SheetJS (excel-parser.ts)
+- Canonical schema with manual column mapping
+- Inline edits, comments with audit log, CSV export
+- Privacy footer already says "Data stays on this device"
 
-### 1. Define the canonical schema (single source of truth)
-In `excel-parser.ts`, declare 11 canonical fields the app understands, with default alias lists:
+This is a meaningful documentation task — definitely warrants a plan.
 
-| Canonical               | Default aliases                                                  |
-|-------------------------|------------------------------------------------------------------|
-| Username                | user, username, samaccountname, "username (pre-windows 2000)", logon name |
-| Name                    | name, displayname, full name, fullname                           |
-| Computername            | computername, computer name, hostname, host                      |
-| Modell                  | modell, model, devicemodel                                       |
-| Last account activity   | last account activity, lastlogon, last logon, lastlogondate      |
-| Status                  | status                                                           |
-| Warranty until          | warranty until, warranty, warrantydate                           |
-| AD Create.Date          | ad create.date, creation date, createdate, whencreated, created  |
-| Company                 | company, organization, org                                       |
-| Email                   | email, mail, e-mail, userprincipalname, upn                      |
-| Department              | department, dept, avdelning                                      |
+## Plan
 
-These become the only "data columns" that ever reach the table — every source header is either mapped to one of them or marked **Ignore**.
+### New routes
 
-### 2. Mapping flow on every import
-After picking the sheet (and before applying), open a new **Column Mapping dialog**:
+1. **`src/routes/documentation.tsx`** — landing page with two cards/links:
+   - "Technical & Security Documentation" → `/documentation/technical`
+   - "User Guide" → `/documentation/user-guide`
+   
+   Use a layout file `documentation.tsx` with `<Outlet />` + sidebar nav, plus an index route `documentation.index.tsx`.
 
-- Left column: each source header from the file with a sample value (first non-empty row).
-- Right column: a `<Select>` per row offering: every canonical field + "Ignore".
-- Pre-fills the Select using current alias logic (so the common case is one click).
-- Footer shows duplicate detection: e.g. "Two headers map to Email — one will overwrite the other" (warning, not blocking).
-- "Reset to auto" button + "Apply mapping" button.
+   Actually simpler: one layout `documentation.tsx` with sidebar (Overview / Technical / User Guide), and three child routes:
+   - `documentation.index.tsx` — overview
+   - `documentation.technical.tsx`
+   - `documentation.user-guide.tsx`
 
-Per-file mappings are remembered in `localStorage` keyed by a hash of the source header set, so re-importing a file with the same headers skips straight through (or shows the dialog with the saved mapping pre-applied). A "Mapping memory" reset lives in the FilterBar next to "Reset columns".
+### Navigation link
 
-### 3. Parser refactor
-`parseSheet` becomes a two-step:
-1. `inspectSheet(buffer, sheet) → { headers, samplesByHeader, suggestedMapping }` — pure inspection, no row construction.
-2. `parseSheetWithMapping(buffer, sheet, filename, mapping) → ParseResult` — applies the explicit mapping, builds rows. Only canonical fields land in `row.raw`; "Ignore" headers are dropped entirely. This eliminates the duplicate-column problem at the source.
+In `src/routes/__root.tsx` (or wherever the top header lives — need to verify), add a "Documentation" link in the header next to existing navigation. Will check `__root.tsx` and `routes/index.tsx` to find the right spot.
 
-`isUsersFile` detection still works (computername empty in all rows + at least one user-info canonical present).
+### Content — Technical & Security doc
 
-### 4. Import Debugger upgrade
-Add a "Detected mapping" panel showing every source header → canonical field (or "Ignore" / "Unmatched") with confidence (alias-match vs fuzzy vs none). Same auto-suggestion logic as the real importer, so the debugger predicts what will happen.
+Sections:
+- **Overview** — purpose, what it does, what it doesn't do
+- **Architecture**
+  - Frontend: React 19 + TanStack Start + Vite 7 + Tailwind v4
+  - No backend, no database, no API calls to external services for data
+  - Hosted on Cloudflare Workers (static SSR shell)
+  - File parsing in-browser via SheetJS (xlsx)
+- **Data flow diagram** (ASCII): User file → Browser parse → localStorage → UI
+- **Data storage**
+  - All data in browser `localStorage` under keys: `hq_asset_data`, `hq_asset_edits`, `hq_asset_column_order`, `hq_asset_column_widths`, `hq_mapping_*`, `hq_canonical_migrated_v1`
+  - Data never leaves the user's device
+  - No telemetry, no analytics, no third-party trackers
+- **Security posture**
+  - No authentication required (no user accounts, no PII transmitted)
+  - No network requests with user data
+  - HTTPS-only via Cloudflare
+  - CSP / standard browser sandboxing applies
+  - No cookies set by app
+- **Privacy / GDPR**
+  - User controls all data; "Clear local data" button removes everything
+  - No data processor relationship — data never reaches Skanska/Lovable servers
+  - User responsible for not sharing exported CSVs improperly
+- **Dependencies** — list key npm packages (React, TanStack, xlsx, lucide, radix-ui, tailwind)
+- **Browser compatibility** — modern Chromium/Firefox/Safari, requires localStorage (~5-10MB)
+- **Limitations** — localStorage quota (~5MB), single-device, no multi-user collaboration
+- **Deployment** — Cloudflare Workers, build with `bun run build`
+- **Audit log** — every manual edit appends `Date: YYYY-MM-DD Change: …` to Comments column
+- **Export controls** — CSV export is user-initiated, downloads locally only
 
-### 5. Migrate existing loaded data
-On first load after this change, scan `data.columns` and `row.raw` and:
-- Drop any column not in the canonical list.
-- Merge any aliases of `Email` into canonical `Email` (etc.). This removes the existing duplicate Email column without re-importing.
+### Content — User Guide
 
-A one-time toast confirms the cleanup.
+Sections:
+- **Getting Started** — drag/drop or click to upload .xlsx
+- **Sheet selection** — choose which sheet to import
+- **Column mapping** — explain the dialog, canonical fields, "Ignore"
+- **Importing additional files** — merging users-file with computers-file
+- **Table features** — sorting, filtering, search, KPI cards
+- **Editing data** — inline double-click edit on Status, Warranty, Comments; what gets logged
+- **Batch updates** — select multiple rows, change status at once
+- **Adding new rows** — manual entry
+- **Comments / audit log** — auto-append format, never overwritten
+- **Exceptions** — what each one means (Missing user, Missing computer, User without computer, etc.)
+- **Reset columns / mappings** — what they do
+- **Exporting** — CSV format, included columns
+- **Clear local data** — what gets deleted, no undo
+- **What to think about**
+  - Always re-import after major source-file changes
+  - Saved mappings remembered per file-header-set
+  - Updates to canonical schema may trigger one-time migration
+  - Single-device — your edits don't sync to other browsers
+- **Troubleshooting** — Import Debugger usage
 
-## Files to change
+### Files to create/modify
 
-- `src/lib/excel-parser.ts` — canonical schema, `inspectSheet`, `parseSheetWithMapping`, alias/fuzzy auto-suggest, mapping-storage helpers
-- `src/components/ColumnMappingDialog.tsx` (new) — the per-import mapping UI
-- `src/components/AssetViewer.tsx` — wire mapping dialog between sheet pick and parse; one-time data migration on hydrate
-- `src/components/ImportDebugger.tsx` — add detected-mapping panel
-- `src/lib/asset-store.ts` — `loadMapping(headerHash) / saveMapping / clearAllMappings`
-- `src/components/AssetTable.tsx` — default column order updated to the 11 canonical columns in the requested left-to-right order (Username, Name, Computername, Modell, Last account activity, Status, Warranty until, AD Create.Date, Company, Email, Department)
-- `src/components/FilterBar.tsx` — add "Reset mappings" button next to "Reset columns"
+- **Create** `src/routes/documentation.tsx` — layout with sidebar nav + Outlet
+- **Create** `src/routes/documentation.index.tsx` — overview landing
+- **Create** `src/routes/documentation.technical.tsx` — IT/Security doc
+- **Create** `src/routes/documentation.user-guide.tsx` — user guide
+- **Modify** `src/routes/__root.tsx` or `src/routes/index.tsx` — add "Documentation" link in header (need to check which holds the header)
 
-## Notes
-- "User" stays as the row's logical user identity — it's just renamed to "Username" in the canonical column list and table header.
-- Email-local-part fallback (jdoe@... → jdoe) still applies when Username is unmapped/empty but Email is present.
-- No new dependencies.
+### Visual style
 
+- Use existing shadcn `Card`, `Badge`, `Separator`, `ScrollArea` components
+- Match the existing dark theme / design tokens
+- Sidebar nav on left (sticky), content area on right
+- ASCII data-flow diagram in `<pre>` block for Technical doc
+- Anchor links / table of contents at top of each long doc
+
+No new dependencies needed.
