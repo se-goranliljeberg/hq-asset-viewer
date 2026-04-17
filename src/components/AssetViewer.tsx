@@ -152,12 +152,11 @@ export function AssetViewer() {
     }
   }, [hydrated, data, setDataDirect]);
 
-  const handleEdit = useCallback((rowId: number, field: keyof AssetEdits, value: string) => {
+  const performEdit = useCallback((rowId: number, field: keyof AssetEdits, value: string) => {
     setEditsState((prev) => {
       const key = getEditKey(rowId);
       const current = prev[key] ?? { status: "", warrantyUntil: "" };
       const updated: AssetEdits = { ...current, [field]: value };
-      // Audit-log all edits except the comment field itself
       if (field !== "comment" && (current[field] ?? "") !== value) {
         const label =
           field === "status" ? "Status" :
@@ -174,7 +173,15 @@ export function AssetViewer() {
     });
   }, []);
 
-  const handleCellEdit = useCallback((rowId: number, column: string, value: string) => {
+  const handleEdit = useCallback((rowId: number, field: keyof AssetEdits, value: string) => {
+    if (field === "comment") {
+      performEdit(rowId, field, value);
+      return;
+    }
+    ensureInitials(() => performEdit(rowId, field, value));
+  }, [performEdit, ensureInitials]);
+
+  const performCellEdit = useCallback((rowId: number, column: string, value: string) => {
     if (!data) return;
     let prevValue = "";
     const updatedRows = data.rows.map((r) => {
@@ -207,6 +214,65 @@ export function AssetViewer() {
       });
     }
   }, [data, setData]);
+
+  const handleCellEdit = useCallback((rowId: number, column: string, value: string) => {
+    ensureInitials(() => performCellEdit(rowId, column, value));
+  }, [performCellEdit, ensureInitials]);
+
+  /**
+   * Undo the last audit entry on a row: strip it from Comments and revert
+   * the corresponding field to its "from" value.
+   */
+  const handleUndoLast = useCallback((rowId: number) => {
+    const key = getEditKey(rowId);
+    const current = edits[key];
+    if (!current) {
+      toast.error("Nothing to undo on this row.");
+      return;
+    }
+    const { remainder, popped } = popLastEntry(current.comment);
+    if (!popped || popped.isNote || !popped.field) {
+      toast.error("Nothing to undo on this row.");
+      return;
+    }
+    const fromVal = popped.from ?? "";
+    const fieldName = popped.field;
+
+    if (fieldName === "Status") {
+      const next = { ...edits, [key]: { ...current, status: fromVal as AssetStatus, comment: remainder } };
+      setEditsState(next);
+      saveEdits(next);
+      toast.success(`Reverted Status → "${fromVal || "(empty)"}"`);
+      return;
+    }
+    if (fieldName === "Warranty until") {
+      const next = { ...edits, [key]: { ...current, warrantyUntil: fromVal, comment: remainder } };
+      setEditsState(next);
+      saveEdits(next);
+      toast.success(`Reverted Warranty until → "${fromVal || "(empty)"}"`);
+      return;
+    }
+    // Otherwise treat as a raw column edit.
+    if (data) {
+      const updatedRows = data.rows.map((r) => {
+        if (r.id !== rowId) return r;
+        const newRaw = { ...r.raw, [fieldName]: fromVal };
+        const colLower = fieldName.toLowerCase();
+        return {
+          ...r,
+          raw: newRaw,
+          computername: colLower === "computername" ? fromVal.trim() : r.computername,
+          modell: colLower === "modell" ? fromVal.trim() : r.modell,
+          user: colLower === "user" ? fromVal.trim() : r.user,
+        };
+      });
+      setData({ ...data, rows: updatedRows });
+    }
+    const next = { ...edits, [key]: { ...current, comment: remainder } };
+    setEditsState(next);
+    saveEdits(next);
+    toast.success(`Reverted ${fieldName} → "${fromVal || "(empty)"}"`);
+  }, [edits, data, setData]);
 
   const handleCardClick = useCallback((key: KpiKey) => {
     if (activeCard === key) {
