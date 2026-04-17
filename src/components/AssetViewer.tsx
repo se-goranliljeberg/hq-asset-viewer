@@ -678,27 +678,29 @@ export function AssetViewer() {
                       onValueChange={(v) => {
                         if (v === "__batch__") return;
                         const statusVal = v === "__none__" ? "" : v;
-                        setEditsState((prev) => {
-                          const next = { ...prev };
-                          for (const id of selectedIds) {
-                            const key = getEditKey(id);
-                            const current = next[key] ?? { status: "", warrantyUntil: "" };
-                            const changed = current.status !== statusVal;
-                            next[key] = {
-                              ...current,
-                              status: statusVal as AssetStatus,
-                              comment: changed
-                                ? appendComment(
-                                    current.comment,
-                                    `${describeChange("Status", current.status, statusVal)} (batch)`,
-                                  )
-                                : current.comment,
-                            };
-                          }
-                          saveEdits(next);
-                          return next;
+                        ensureInitials(() => {
+                          setEditsState((prev) => {
+                            const next = { ...prev };
+                            for (const id of selectedIds) {
+                              const key = getEditKey(id);
+                              const current = next[key] ?? { status: "", warrantyUntil: "" };
+                              const changed = current.status !== statusVal;
+                              next[key] = {
+                                ...current,
+                                status: statusVal as AssetStatus,
+                                comment: changed
+                                  ? appendComment(
+                                      current.comment,
+                                      `${describeChange("Status", current.status, statusVal)} (batch)`,
+                                    )
+                                  : current.comment,
+                              };
+                            }
+                            saveEdits(next);
+                            return next;
+                          });
+                          toast.success(`Updated status for ${selectedIds.size} rows`);
                         });
-                        toast.success(`Updated status for ${selectedIds.size} rows`);
                       }}
                     >
                       <SelectTrigger className="h-8 w-[200px] text-xs">
@@ -725,6 +727,7 @@ export function AssetViewer() {
                   edits={edits}
                   onEdit={handleEdit}
                   onCellEdit={handleCellEdit}
+                  onUndoLast={handleUndoLast}
                   selectedIds={selectedIds}
                   onSelectionChange={setSelectedIds}
                 />
