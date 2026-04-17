@@ -2,9 +2,24 @@ import * as React from "react";
 import { Check, ChevronDown, Search, X } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+
+/** Visual-only checkbox used inside a clickable row button (cannot nest a real <button>). */
+function CheckboxIcon({ checked }: { checked: boolean }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "grid h-4 w-4 shrink-0 place-content-center rounded-sm border border-primary shadow-sm",
+        checked && "bg-primary text-primary-foreground",
+      )}
+    >
+      {checked && <Check className="h-3 w-3" />}
+    </span>
+  );
+}
+
 
 interface MultiSelectProps {
   options: string[];
@@ -130,11 +145,7 @@ export function MultiSelect({
               onClick={() => toggle(noneOption.value)}
               className="flex w-full items-center gap-2 px-2 py-1.5 text-sm hover:bg-accent text-left"
             >
-              <Checkbox
-                checked={selected.includes(noneOption.value)}
-                onCheckedChange={() => toggle(noneOption.value)}
-                onClick={(e) => e.stopPropagation()}
-              />
+              <CheckboxIcon checked={selected.includes(noneOption.value)} />
               <span className="italic text-muted-foreground">{noneOption.label}</span>
             </button>
           )}
@@ -150,11 +161,7 @@ export function MultiSelect({
               onClick={() => toggle(opt)}
               className="flex w-full items-center gap-2 px-2 py-1.5 text-sm hover:bg-accent text-left"
             >
-              <Checkbox
-                checked={selected.includes(opt)}
-                onCheckedChange={() => toggle(opt)}
-                onClick={(e) => e.stopPropagation()}
-              />
+              <CheckboxIcon checked={selected.includes(opt)} />
               <span className="truncate">{opt}</span>
             </button>
           ))}
