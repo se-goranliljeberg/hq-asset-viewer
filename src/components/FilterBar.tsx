@@ -3,7 +3,7 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
-import { Search, RotateCcw } from "lucide-react";
+import { Search, RotateCcw, Eraser } from "lucide-react";
 
 interface Props {
   search: string;
@@ -23,6 +23,7 @@ interface Props {
   sources: string[];
   statuses: string[];
   onResetColumns?: () => void;
+  onResetMappings?: () => void;
 }
 
 export function FilterBar({
@@ -33,7 +34,7 @@ export function FilterBar({
   statusFilter, onStatusFilter,
   exceptionsOnly, onExceptionsOnly,
   models, users, sources, statuses,
-  onResetColumns,
+  onResetColumns, onResetMappings,
 }: Props) {
   return (
     <div className="flex flex-wrap items-center gap-3">
@@ -98,7 +99,6 @@ export function FilterBar({
         </SelectContent>
       </Select>
 
-
       <Tooltip>
         <TooltipTrigger asChild>
           <div className="flex items-center gap-2">
@@ -109,16 +109,28 @@ export function FilterBar({
         <TooltipContent>Show only rows with data quality issues</TooltipContent>
       </Tooltip>
 
-      {onResetColumns && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="ghost" size="sm" onClick={onResetColumns} className="ml-auto">
-              <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reset columns
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Reset column order and widths to defaults</TooltipContent>
-        </Tooltip>
-      )}
+      <div className="ml-auto flex items-center gap-1">
+        {onResetMappings && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="sm" onClick={onResetMappings}>
+                <Eraser className="h-3.5 w-3.5 mr-1" /> Reset mappings
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Forget remembered column mappings for all imported files</TooltipContent>
+          </Tooltip>
+        )}
+        {onResetColumns && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="sm" onClick={onResetColumns}>
+                <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reset columns
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Reset column order and widths to defaults</TooltipContent>
+          </Tooltip>
+        )}
+      </div>
     </div>
   );
 }
