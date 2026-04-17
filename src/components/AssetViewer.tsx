@@ -7,6 +7,7 @@ import {
   isMigrated, markMigrated,
 } from "@/lib/asset-store";
 import { loadEdits, saveEdits, clearEdits, getEditKey, STATUS_OPTIONS } from "@/lib/asset-edits";
+import { appendComment, describeChange } from "@/lib/comment-log";
 import {
   getSheetNames, parseSheetWithMapping, mergeData, enrichWithUsers,
   inspectSheet, headerSetHash, migrateToCanonical,
@@ -257,21 +258,33 @@ export function AssetViewer() {
     if (!computername) exceptions.push("Missing Computername");
     if (!user) exceptions.push("Missing User");
     if (!modell) exceptions.push("Missing Modell");
-    // Check for duplicate computername
     if (computername && data.rows.some((r) => r.computername.toLowerCase() === computername.toLowerCase())) {
       exceptions.push("Duplicate Computername (cross-file)");
     }
     const newRow: AssetRow = { id: newId, computername, modell, user, raw, exceptions, sourceFile: "Manual entry" };
     const updatedData: AssetData = { ...data, rows: [...data.rows, newRow] };
     setData(updatedData);
-    // Save status/warranty as edits
-    if (status || warrantyUntil) {
-      setEditsState((prev) => {
-        const next = { ...prev, [String(newId)]: { status, warrantyUntil } };
-        saveEdits(next);
-        return next;
-      });
-    }
+
+    // Build initial audit entry: list non-empty fields
+    const filledFields = Object.entries(raw)
+      .filter(([, v]) => v && v.trim() !== "")
+      .map(([k]) => k);
+    const summary = filledFields.length > 0
+      ? `Row added manually with ${filledFields.join(", ")}`
+      : "Row added manually";
+    const initialComment = appendComment("", summary);
+    const withStatus = status
+      ? appendComment(initialComment, describeChange("Status", "", status))
+      : initialComment;
+    const withWarranty = warrantyUntil
+      ? appendComment(withStatus, describeChange("Warranty until", "", warrantyUntil))
+      : withStatus;
+
+    setEditsState((prev) => {
+      const next = { ...prev, [String(newId)]: { status, warrantyUntil, comment: withWarranty } };
+      saveEdits(next);
+      return next;
+    });
     toast.success(`Added manual row "${computername || "Unnamed"}"`);
   }, [data, setData]);
 
@@ -558,7 +571,18 @@ export function AssetViewer() {
                           const next = { ...prev };
                           for (const id of selectedIds) {
                             const key = getEditKey(id);
-                            next[key] = { ...(next[key] ?? { status: "", warrantyUntil: "" }), status: statusVal as any };
+                            const current = next[key] ?? { status: "", warrantyUntil: "" };
+                            const changed = current.status !== statusVal;
+                            next[key] = {
+                              ...current,
+                              status: statusVal as AssetStatus,
+                              comment: changed
+                                ? appendComment(
+                                    current.comment,
+                                    `${describeChange("Status", current.status, statusVal)} (batch)`,
+                                  )
+                                : current.comment,
+                            };
                           }
                           saveEdits(next);
                           return next;
