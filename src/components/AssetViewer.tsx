@@ -7,7 +7,10 @@ import {
   isMigrated, markMigrated,
 } from "@/lib/asset-store";
 import { loadEdits, saveEdits, clearEdits, getEditKey, STATUS_OPTIONS } from "@/lib/asset-edits";
-import { appendComment, describeChange } from "@/lib/comment-log";
+import {
+  appendComment, describeChange, popLastEntry,
+  getStoredInitials, setStoredInitials,
+} from "@/lib/comment-log";
 import {
   getSheetNames, parseSheetWithMapping, mergeData, enrichWithUsers,
   inspectSheet, headerSetHash, migrateToCanonical,
@@ -36,6 +39,7 @@ import { Link } from "@tanstack/react-router";
 import { AddRowDialog } from "./AddRowDialog";
 import { ImportDebugger } from "./ImportDebugger";
 import { ColumnMappingDialog } from "./ColumnMappingDialog";
+import { InitialsPromptDialog } from "./InitialsPromptDialog";
 
 import { toast } from "sonner";
 
@@ -89,6 +93,34 @@ export function AssetViewer() {
   const [mappingInitial, setMappingInitial] = useState<Mapping | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // Initials prompt — shown once on first audit-logging edit if not stored yet.
+  const [initialsOpen, setInitialsOpen] = useState(false);
+  const pendingAfterInitials = useRef<(() => void) | null>(null);
+
+  const ensureInitials = useCallback((proceed: () => void) => {
+    if (getStoredInitials()) {
+      proceed();
+      return;
+    }
+    pendingAfterInitials.current = proceed;
+    setInitialsOpen(true);
+  }, []);
+
+  const handleInitialsConfirm = useCallback((value: string) => {
+    setStoredInitials(value);
+    setInitialsOpen(false);
+    const cb = pendingAfterInitials.current;
+    pendingAfterInitials.current = null;
+    if (cb) cb();
+  }, []);
+
+  const handleInitialsSkip = useCallback(() => {
+    setInitialsOpen(false);
+    const cb = pendingAfterInitials.current;
+    pendingAfterInitials.current = null;
+    if (cb) cb();
+  }, []);
+
   useEffect(() => {
     // Sanitize edits on load: clear warrantyUntil values that aren't valid YYYY-MM-DD,
     // which would otherwise crash the date picker with "Invalid time value".
@@ -120,12 +152,11 @@ export function AssetViewer() {
     }
   }, [hydrated, data, setDataDirect]);
 
-  const handleEdit = useCallback((rowId: number, field: keyof AssetEdits, value: string) => {
+  const performEdit = useCallback((rowId: number, field: keyof AssetEdits, value: string) => {
     setEditsState((prev) => {
       const key = getEditKey(rowId);
       const current = prev[key] ?? { status: "", warrantyUntil: "" };
       const updated: AssetEdits = { ...current, [field]: value };
-      // Audit-log all edits except the comment field itself
       if (field !== "comment" && (current[field] ?? "") !== value) {
         const label =
           field === "status" ? "Status" :
@@ -142,7 +173,15 @@ export function AssetViewer() {
     });
   }, []);
 
-  const handleCellEdit = useCallback((rowId: number, column: string, value: string) => {
+  const handleEdit = useCallback((rowId: number, field: keyof AssetEdits, value: string) => {
+    if (field === "comment") {
+      performEdit(rowId, field, value);
+      return;
+    }
+    ensureInitials(() => performEdit(rowId, field, value));
+  }, [performEdit, ensureInitials]);
+
+  const performCellEdit = useCallback((rowId: number, column: string, value: string) => {
     if (!data) return;
     let prevValue = "";
     const updatedRows = data.rows.map((r) => {
@@ -175,6 +214,65 @@ export function AssetViewer() {
       });
     }
   }, [data, setData]);
+
+  const handleCellEdit = useCallback((rowId: number, column: string, value: string) => {
+    ensureInitials(() => performCellEdit(rowId, column, value));
+  }, [performCellEdit, ensureInitials]);
+
+  /**
+   * Undo the last audit entry on a row: strip it from Comments and revert
+   * the corresponding field to its "from" value.
+   */
+  const handleUndoLast = useCallback((rowId: number) => {
+    const key = getEditKey(rowId);
+    const current = edits[key];
+    if (!current) {
+      toast.error("Nothing to undo on this row.");
+      return;
+    }
+    const { remainder, popped } = popLastEntry(current.comment);
+    if (!popped || popped.isNote || !popped.field) {
+      toast.error("Nothing to undo on this row.");
+      return;
+    }
+    const fromVal = popped.from ?? "";
+    const fieldName = popped.field;
+
+    if (fieldName === "Status") {
+      const next = { ...edits, [key]: { ...current, status: fromVal as AssetStatus, comment: remainder } };
+      setEditsState(next);
+      saveEdits(next);
+      toast.success(`Reverted Status → "${fromVal || "(empty)"}"`);
+      return;
+    }
+    if (fieldName === "Warranty until") {
+      const next = { ...edits, [key]: { ...current, warrantyUntil: fromVal, comment: remainder } };
+      setEditsState(next);
+      saveEdits(next);
+      toast.success(`Reverted Warranty until → "${fromVal || "(empty)"}"`);
+      return;
+    }
+    // Otherwise treat as a raw column edit.
+    if (data) {
+      const updatedRows = data.rows.map((r) => {
+        if (r.id !== rowId) return r;
+        const newRaw = { ...r.raw, [fieldName]: fromVal };
+        const colLower = fieldName.toLowerCase();
+        return {
+          ...r,
+          raw: newRaw,
+          computername: colLower === "computername" ? fromVal.trim() : r.computername,
+          modell: colLower === "modell" ? fromVal.trim() : r.modell,
+          user: colLower === "user" ? fromVal.trim() : r.user,
+        };
+      });
+      setData({ ...data, rows: updatedRows });
+    }
+    const next = { ...edits, [key]: { ...current, comment: remainder } };
+    setEditsState(next);
+    saveEdits(next);
+    toast.success(`Reverted ${fieldName} → "${fromVal || "(empty)"}"`);
+  }, [edits, data, setData]);
 
   const handleCardClick = useCallback((key: KpiKey) => {
     if (activeCard === key) {
@@ -248,46 +346,47 @@ export function AssetViewer() {
 
   const handleAddRow = useCallback((raw: Record<string, string>, status: AssetStatus, warrantyUntil: string) => {
     if (!data) return;
-    const newId = Math.max(...data.rows.map((r) => r.id), 0) + 1;
-    const cnKey = Object.keys(raw).find((k) => k.toLowerCase() === "computername") ?? "";
-    const modelKey = Object.keys(raw).find((k) => k.toLowerCase() === "modell") ?? "";
-    const userKey = Object.keys(raw).find((k) => k.toLowerCase() === "user") ?? "";
-    const computername = cnKey ? (raw[cnKey] ?? "").trim() : "";
-    const modell = modelKey ? (raw[modelKey] ?? "").trim() : "";
-    const user = userKey ? (raw[userKey] ?? "").trim() : "";
-    const exceptions: string[] = [];
-    if (!computername) exceptions.push("Missing Computername");
-    if (!user) exceptions.push("Missing User");
-    if (!modell) exceptions.push("Missing Modell");
-    if (computername && data.rows.some((r) => r.computername.toLowerCase() === computername.toLowerCase())) {
-      exceptions.push("Duplicate Computername (cross-file)");
-    }
-    const newRow: AssetRow = { id: newId, computername, modell, user, raw, exceptions, sourceFile: "Manual entry" };
-    const updatedData: AssetData = { ...data, rows: [...data.rows, newRow] };
-    setData(updatedData);
+    ensureInitials(() => {
+      const newId = Math.max(...data.rows.map((r) => r.id), 0) + 1;
+      const cnKey = Object.keys(raw).find((k) => k.toLowerCase() === "computername") ?? "";
+      const modelKey = Object.keys(raw).find((k) => k.toLowerCase() === "modell") ?? "";
+      const userKey = Object.keys(raw).find((k) => k.toLowerCase() === "user") ?? "";
+      const computername = cnKey ? (raw[cnKey] ?? "").trim() : "";
+      const modell = modelKey ? (raw[modelKey] ?? "").trim() : "";
+      const user = userKey ? (raw[userKey] ?? "").trim() : "";
+      const exceptions: string[] = [];
+      if (!computername) exceptions.push("Missing Computername");
+      if (!user) exceptions.push("Missing User");
+      if (!modell) exceptions.push("Missing Modell");
+      if (computername && data.rows.some((r) => r.computername.toLowerCase() === computername.toLowerCase())) {
+        exceptions.push("Duplicate Computername (cross-file)");
+      }
+      const newRow: AssetRow = { id: newId, computername, modell, user, raw, exceptions, sourceFile: "Manual entry" };
+      const updatedData: AssetData = { ...data, rows: [...data.rows, newRow] };
+      setData(updatedData);
 
-    // Build initial audit entry: list non-empty fields
-    const filledFields = Object.entries(raw)
-      .filter(([, v]) => v && v.trim() !== "")
-      .map(([k]) => k);
-    const summary = filledFields.length > 0
-      ? `Row added manually with ${filledFields.join(", ")}`
-      : "Row added manually";
-    const initialComment = appendComment("", summary);
-    const withStatus = status
-      ? appendComment(initialComment, describeChange("Status", "", status))
-      : initialComment;
-    const withWarranty = warrantyUntil
-      ? appendComment(withStatus, describeChange("Warranty until", "", warrantyUntil))
-      : withStatus;
+      const filledFields = Object.entries(raw)
+        .filter(([, v]) => v && v.trim() !== "")
+        .map(([k]) => k);
+      const summary = filledFields.length > 0
+        ? `Row added manually with ${filledFields.join(", ")}`
+        : "Row added manually";
+      const initialComment = appendComment("", summary);
+      const withStatus = status
+        ? appendComment(initialComment, describeChange("Status", "", status))
+        : initialComment;
+      const withWarranty = warrantyUntil
+        ? appendComment(withStatus, describeChange("Warranty until", "", warrantyUntil))
+        : withStatus;
 
-    setEditsState((prev) => {
-      const next = { ...prev, [String(newId)]: { status, warrantyUntil, comment: withWarranty } };
-      saveEdits(next);
-      return next;
+      setEditsState((prev) => {
+        const next = { ...prev, [String(newId)]: { status, warrantyUntil, comment: withWarranty } };
+        saveEdits(next);
+        return next;
+      });
+      toast.success(`Added manual row "${computername || "Unnamed"}"`);
     });
-    toast.success(`Added manual row "${computername || "Unnamed"}"`);
-  }, [data, setData]);
+  }, [data, setData, ensureInitials]);
 
   const openMappingFor = useCallback((buffer: ArrayBuffer, sheet: string, filename: string) => {
     pendingBuffer.current = buffer;
@@ -579,27 +678,29 @@ export function AssetViewer() {
                       onValueChange={(v) => {
                         if (v === "__batch__") return;
                         const statusVal = v === "__none__" ? "" : v;
-                        setEditsState((prev) => {
-                          const next = { ...prev };
-                          for (const id of selectedIds) {
-                            const key = getEditKey(id);
-                            const current = next[key] ?? { status: "", warrantyUntil: "" };
-                            const changed = current.status !== statusVal;
-                            next[key] = {
-                              ...current,
-                              status: statusVal as AssetStatus,
-                              comment: changed
-                                ? appendComment(
-                                    current.comment,
-                                    `${describeChange("Status", current.status, statusVal)} (batch)`,
-                                  )
-                                : current.comment,
-                            };
-                          }
-                          saveEdits(next);
-                          return next;
+                        ensureInitials(() => {
+                          setEditsState((prev) => {
+                            const next = { ...prev };
+                            for (const id of selectedIds) {
+                              const key = getEditKey(id);
+                              const current = next[key] ?? { status: "", warrantyUntil: "" };
+                              const changed = current.status !== statusVal;
+                              next[key] = {
+                                ...current,
+                                status: statusVal as AssetStatus,
+                                comment: changed
+                                  ? appendComment(
+                                      current.comment,
+                                      `${describeChange("Status", current.status, statusVal)} (batch)`,
+                                    )
+                                  : current.comment,
+                              };
+                            }
+                            saveEdits(next);
+                            return next;
+                          });
+                          toast.success(`Updated status for ${selectedIds.size} rows`);
                         });
-                        toast.success(`Updated status for ${selectedIds.size} rows`);
                       }}
                     >
                       <SelectTrigger className="h-8 w-[200px] text-xs">
@@ -626,6 +727,7 @@ export function AssetViewer() {
                   edits={edits}
                   onEdit={handleEdit}
                   onCellEdit={handleCellEdit}
+                  onUndoLast={handleUndoLast}
                   selectedIds={selectedIds}
                   onSelectionChange={setSelectedIds}
                 />
@@ -737,6 +839,12 @@ export function AssetViewer() {
           initialMapping={mappingInitial}
           onApply={handleMappingApply}
           onCancel={handleMappingCancel}
+        />
+
+        <InitialsPromptDialog
+          open={initialsOpen}
+          onConfirm={handleInitialsConfirm}
+          onCancel={handleInitialsSkip}
         />
       </div>
     </TooltipProvider>
