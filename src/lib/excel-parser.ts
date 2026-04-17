@@ -31,6 +31,35 @@ function findKey(map: Record<string, string>, aliases: string[]): string | null 
   return null;
 }
 
+/**
+ * Normalize any incoming date-ish value into "YYYY-MM-DD" or "" if not parseable.
+ * Handles: JS Date, Excel serial number, ISO strings, common locale strings (e.g. "4/15/2026", "15/4/2026").
+ */
+export function normalizeDate(input: unknown): string {
+  if (input === null || input === undefined || input === "") return "";
+  if (input instanceof Date) {
+    return isNaN(input.getTime()) ? "" : input.toISOString().slice(0, 10);
+  }
+  if (typeof input === "number" && isFinite(input)) {
+    // Excel serial date: days since 1899-12-30
+    const ms = Math.round((input - 25569) * 86400 * 1000);
+    const d = new Date(ms);
+    return isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
+  }
+  const s = String(input).trim();
+  if (!s) return "";
+  // Already ISO?
+  const isoMatch = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if (isoMatch) {
+    const d = new Date(`${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}T00:00:00Z`);
+    return isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
+  }
+  // Try locale parse
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+  return "";
+}
+
 export function parseSheet(buffer: ArrayBuffer, sheetName: string, filename: string): ParseResult {
   const wb = XLSX.read(buffer, { type: "array" });
   const ws = wb.Sheets[sheetName];
@@ -98,15 +127,11 @@ export function parseSheet(buffer: ArrayBuffer, sheetName: string, filename: str
     const user = userKey ? String(row[userKey] ?? "").trim() : "";
     const email = emailKey ? String(row[emailKey] ?? "").trim() : "";
     const department = deptKey ? String(row[deptKey] ?? "").trim() : "";
-    const createdRaw = createdKey ? row[createdKey] : "";
-    const created = createdRaw instanceof Date
-      ? createdRaw.toISOString().slice(0, 10)
-      : String(createdRaw ?? "").trim();
+    const created = normalizeDate(createdKey ? row[createdKey] : "");
 
     const exceptions: string[] = [];
     if (isUsersFile) {
       if (!user) exceptions.push("Missing user");
-      // For users-only rows, no computer is the whole point — don't flag missing model/computer
     } else {
       if (!user) exceptions.push("Missing user");
       if (!modell) exceptions.push("Missing model");
@@ -122,17 +147,16 @@ export function parseSheet(buffer: ArrayBuffer, sheetName: string, filename: str
     for (const col of dataColumns) {
       raw[col] = String(row[col] ?? "").trim();
     }
-    // Normalize user-info columns under canonical names
     if (email) raw["Email"] = email;
     if (department) raw["Department"] = department;
     if (created) raw["Creation date"] = created;
-    // Ensure keys exist (empty strings) for canonical cols
     for (const c of USER_INFO_COLUMNS) {
       if (!(c in raw)) raw[c] = "";
     }
 
     const statusVal = hasStatus ? String(row["Status"] ?? "").trim() : "";
-    const warrantyVal = hasWarranty ? String(row["Warranty until"] ?? "").trim() : "";
+    const warrantyRaw = hasWarranty ? row["Warranty until"] : "";
+    const warrantyVal = normalizeDate(warrantyRaw);
     if (statusVal || warrantyVal) {
       const validStatus = (STATUS_OPTIONS as readonly string[]).includes(statusVal)
         ? (statusVal as AssetStatus)

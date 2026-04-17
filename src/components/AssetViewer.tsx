@@ -23,8 +23,9 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Upload, Trash2, Download, ShieldCheck, RefreshCw, Plus } from "lucide-react";
+import { Upload, Trash2, Download, ShieldCheck, RefreshCw, Plus, Bug } from "lucide-react";
 import { AddRowDialog } from "./AddRowDialog";
+import { ImportDebugger } from "./ImportDebugger";
 
 import { toast } from "sonner";
 
@@ -63,6 +64,7 @@ export function AssetViewer() {
   const [pendingSheets, setPendingSheets] = useState<string[]>([]);
   const [importModeOpen, setImportModeOpen] = useState(false);
   const [addRowOpen, setAddRowOpen] = useState(false);
+  const [debugOpen, setDebugOpen] = useState(false);
   const [pendingIsUsersFile, setPendingIsUsersFile] = useState(false);
   const pendingBuffer = useRef<ArrayBuffer | null>(null);
   const pendingFilename = useRef("");
@@ -71,7 +73,22 @@ export function AssetViewer() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    setEditsState(loadEdits());
+    // Sanitize edits on load: clear warrantyUntil values that aren't valid YYYY-MM-DD,
+    // which would otherwise crash the date picker with "Invalid time value".
+    const loaded = loadEdits();
+    let dirty = false;
+    const cleaned: typeof loaded = {};
+    for (const [k, v] of Object.entries(loaded)) {
+      const w = v.warrantyUntil ?? "";
+      if (w && !/^\d{4}-\d{2}-\d{2}$/.test(w)) {
+        cleaned[k] = { ...v, warrantyUntil: "" };
+        dirty = true;
+      } else {
+        cleaned[k] = v;
+      }
+    }
+    if (dirty) saveEdits(cleaned);
+    setEditsState(cleaned);
   }, []);
 
   const handleEdit = useCallback((rowId: number, field: keyof AssetEdits, value: string) => {
@@ -348,6 +365,14 @@ export function AssetViewer() {
               <input ref={fileRef} type="file" accept=".xlsx,.xls" onChange={onFileChange} className="hidden" />
               <Tooltip>
                 <TooltipTrigger asChild>
+                  <Button size="sm" variant="outline" onClick={() => setDebugOpen(true)}>
+                    <Bug className="h-4 w-4 mr-1" /> Debug Import
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Inspect a file before importing — shows columns, dates, warnings</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
                   <Button size="sm" onClick={() => fileRef.current?.click()}>
                     <Upload className="h-4 w-4 mr-1" />
                     {data ? "Replace Data" : "Load Excel"}
@@ -566,6 +591,8 @@ export function AssetViewer() {
           columns={columns}
           onSave={handleAddRow}
         />
+
+        <ImportDebugger open={debugOpen} onOpenChange={setDebugOpen} />
       </div>
     </TooltipProvider>
   );
