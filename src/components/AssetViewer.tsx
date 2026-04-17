@@ -365,6 +365,14 @@ export function AssetViewer() {
               <input ref={fileRef} type="file" accept=".xlsx,.xls" onChange={onFileChange} className="hidden" />
               <Tooltip>
                 <TooltipTrigger asChild>
+                  <Button size="sm" variant="outline" onClick={() => setDebugOpen(true)}>
+                    <Bug className="h-4 w-4 mr-1" /> Debug Import
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Inspect a file before importing — shows columns, dates, warnings</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
                   <Button size="sm" onClick={() => fileRef.current?.click()}>
                     <Upload className="h-4 w-4 mr-1" />
                     {data ? "Replace Data" : "Load Excel"}
