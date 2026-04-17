@@ -40,23 +40,26 @@ export function normalizeDate(input: unknown): string {
   if (input instanceof Date) {
     return isNaN(input.getTime()) ? "" : input.toISOString().slice(0, 10);
   }
-  if (typeof input === "number" && isFinite(input)) {
+  if (typeof input === "number") {
+    if (!isFinite(input) || input <= 0) return "";
     // Excel serial date: days since 1899-12-30
     const ms = Math.round((input - 25569) * 86400 * 1000);
     const d = new Date(ms);
-    return isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
+    if (isNaN(d.getTime()) || d.getUTCFullYear() < 1970) return "";
+    return d.toISOString().slice(0, 10);
   }
   const s = String(input).trim();
-  if (!s) return "";
+  if (!s || s === "0") return "";
   // Already ISO?
   const isoMatch = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
   if (isoMatch) {
     const d = new Date(`${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}T00:00:00Z`);
-    return isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
+    if (isNaN(d.getTime()) || d.getUTCFullYear() < 1970) return "";
+    return d.toISOString().slice(0, 10);
   }
   // Try locale parse
   const d = new Date(s);
-  if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+  if (!isNaN(d.getTime()) && d.getUTCFullYear() >= 1970) return d.toISOString().slice(0, 10);
   return "";
 }
 
@@ -74,10 +77,10 @@ export function parseSheet(buffer: ArrayBuffer, sheetName: string, filename: str
   }
 
   const originalColumns = Object.keys(jsonRows[0]);
-  const dataColumns = originalColumns.filter((c) => !EXPORT_EXTRA_COLS.has(c));
+  const dataColumnsAll = originalColumns.filter((c) => !EXPORT_EXTRA_COLS.has(c));
 
   const colMap: Record<string, string> = {};
-  for (const col of dataColumns) {
+  for (const col of dataColumnsAll) {
     colMap[col.toLowerCase().trim()] = col;
   }
 
@@ -87,6 +90,13 @@ export function parseSheet(buffer: ArrayBuffer, sheetName: string, filename: str
   const emailKey = findKey(colMap, EMAIL_ALIASES);
   const deptKey = findKey(colMap, DEPT_ALIASES);
   const createdKey = findKey(colMap, CREATED_ALIASES);
+
+  // Drop alias headers that will be replaced by canonical USER_INFO_COLUMNS
+  const canonicalSet = new Set<string>(USER_INFO_COLUMNS as readonly string[]);
+  const aliasKeysToDrop = new Set<string>(
+    [emailKey, deptKey, createdKey].filter((k): k is string => !!k && !canonicalSet.has(k))
+  );
+  const dataColumns = dataColumnsAll.filter((c) => !aliasKeysToDrop.has(c));
 
   // Detect users-only file: no Computername column OR all rows have empty Computername,
   // AND has at least one user-info column
@@ -124,29 +134,38 @@ export function parseSheet(buffer: ArrayBuffer, sheetName: string, filename: str
   const rows: AssetRow[] = jsonRows.map((row, idx) => {
     const computername = cnKey ? String(row[cnKey] ?? "").trim() : "";
     const modell = modelKey ? String(row[modelKey] ?? "").trim() : "";
-    const user = userKey ? String(row[userKey] ?? "").trim() : "";
+    let user = userKey ? String(row[userKey] ?? "").trim() : "";
     const email = emailKey ? String(row[emailKey] ?? "").trim() : "";
     const department = deptKey ? String(row[deptKey] ?? "").trim() : "";
     const created = normalizeDate(createdKey ? row[createdKey] : "");
 
+    // Fallback: derive user from email local-part if user is missing
+    if (!user && email && email.includes("@")) {
+      user = email.split("@")[0].trim();
+    }
+
     const exceptions: string[] = [];
     if (isUsersFile) {
-      if (!user) exceptions.push("Missing user");
+      if (!user && !email) exceptions.push("Missing user");
+      if (!computername) exceptions.push("User without computer");
     } else {
-      if (!user) exceptions.push("Missing user");
-      if (!modell) exceptions.push("Missing model");
+      if (!user && !email) exceptions.push("Missing user");
+      if (!modell && !computername) {
+        exceptions.push("Missing computer");
+      } else if (!modell) {
+        exceptions.push("Missing computer");
+      }
       if (computername && (cnCounts.get(computername.toLowerCase()) ?? 0) > 1) {
         exceptions.push("Duplicate computername");
       }
-    }
-    if (isUsersFile && !computername) {
-      exceptions.push("User without computer");
     }
 
     const raw: Record<string, string> = {};
     for (const col of dataColumns) {
       raw[col] = String(row[col] ?? "").trim();
     }
+    // Also strip any alias columns from raw (in case they slipped in)
+    for (const k of aliasKeysToDrop) delete raw[k];
     if (email) raw["Email"] = email;
     if (department) raw["Department"] = department;
     if (created) raw["Creation date"] = created;
