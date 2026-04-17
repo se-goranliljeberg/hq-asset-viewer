@@ -89,7 +89,16 @@ export function parseSheet(buffer: ArrayBuffer, sheetName: string, filename: str
 
   const cnKey = colMap["computername"] ?? null;
   const modelKey = colMap["modell"] ?? null;
-  const userKey = findKey(colMap, USER_KEY_ALIASES);
+  let userKey = findKey(colMap, USER_KEY_ALIASES);
+  if (!userKey) {
+    // Fuzzy match for headers like "Username (pre-Windows 2000)"
+    for (const [norm, original] of Object.entries(colMap)) {
+      if (USER_KEY_SUBSTRINGS.some((s) => norm.includes(s))) {
+        userKey = original;
+        break;
+      }
+    }
+  }
   const emailKey = findKey(colMap, EMAIL_ALIASES);
   const deptKey = findKey(colMap, DEPT_ALIASES);
   const createdKey = findKey(colMap, CREATED_ALIASES);
