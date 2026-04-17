@@ -169,6 +169,8 @@ const SECTION_TONE: Record<string, string> = {
 };
 
 function ChangelogPage() {
+  // Opening the changelog clears the "NEW" badge in the app header.
+  useEffect(() => { markVersionSeen(); }, []);
   return (
     <article className="space-y-8 max-w-3xl">
       <header className="space-y-3">
