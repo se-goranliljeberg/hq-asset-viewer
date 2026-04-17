@@ -591,6 +591,8 @@ export function AssetViewer() {
           columns={columns}
           onSave={handleAddRow}
         />
+
+        <ImportDebugger open={debugOpen} onOpenChange={setDebugOpen} />
       </div>
     </TooltipProvider>
   );
