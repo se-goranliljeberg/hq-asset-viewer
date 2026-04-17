@@ -8,7 +8,10 @@ const EXPORT_EXTRA_COLS = new Set(["Status", "Warranty until", "Exceptions", "So
 // Canonical column names used for users-file enrichment
 export const USER_INFO_COLUMNS = ["Email", "Department", "Creation date"] as const;
 
-const USER_KEY_ALIASES = ["user", "username", "samaccountname"];
+const USER_KEY_ALIASES = ["user", "username", "samaccountname", "logon name", "login"];
+
+// Substring patterns for user-key headers that vary widely (e.g. "Username (pre-Windows 2000)")
+const USER_KEY_SUBSTRINGS = ["username", "sam-account", "samaccount", "pre-windows 2000", "pre-2000", "logon name"];
 const EMAIL_ALIASES = ["email", "mail", "e-mail", "userprincipalname", "upn"];
 const DEPT_ALIASES = ["department", "dept", "avdelning"];
 const CREATED_ALIASES = ["creation date", "created", "createdate", "whencreated", "creationdate", "created on"];
@@ -86,7 +89,16 @@ export function parseSheet(buffer: ArrayBuffer, sheetName: string, filename: str
 
   const cnKey = colMap["computername"] ?? null;
   const modelKey = colMap["modell"] ?? null;
-  const userKey = findKey(colMap, USER_KEY_ALIASES);
+  let userKey = findKey(colMap, USER_KEY_ALIASES);
+  if (!userKey) {
+    // Fuzzy match for headers like "Username (pre-Windows 2000)"
+    for (const [norm, original] of Object.entries(colMap)) {
+      if (USER_KEY_SUBSTRINGS.some((s) => norm.includes(s))) {
+        userKey = original;
+        break;
+      }
+    }
+  }
   const emailKey = findKey(colMap, EMAIL_ALIASES);
   const deptKey = findKey(colMap, DEPT_ALIASES);
   const createdKey = findKey(colMap, CREATED_ALIASES);
