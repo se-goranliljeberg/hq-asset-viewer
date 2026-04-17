@@ -502,6 +502,10 @@ export function AssetViewer() {
                     localStorage.removeItem("hq_asset_column_widths");
                     toast.success("Column layout reset — reload to apply.");
                   }}
+                  onResetMappings={() => {
+                    const n = clearAllMappings();
+                    toast.success(n > 0 ? `Forgot ${n} saved mapping(s).` : "No saved mappings to clear.");
+                  }}
                 />
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>{filtered.length.toLocaleString()} of {rows.length.toLocaleString()} rows</span>
