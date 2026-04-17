@@ -8,7 +8,10 @@ const EXPORT_EXTRA_COLS = new Set(["Status", "Warranty until", "Exceptions", "So
 // Canonical column names used for users-file enrichment
 export const USER_INFO_COLUMNS = ["Email", "Department", "Creation date"] as const;
 
-const USER_KEY_ALIASES = ["user", "username", "samaccountname"];
+const USER_KEY_ALIASES = ["user", "username", "samaccountname", "logon name", "login"];
+
+// Substring patterns for user-key headers that vary widely (e.g. "Username (pre-Windows 2000)")
+const USER_KEY_SUBSTRINGS = ["username", "sam-account", "samaccount", "pre-windows 2000", "pre-2000", "logon name"];
 const EMAIL_ALIASES = ["email", "mail", "e-mail", "userprincipalname", "upn"];
 const DEPT_ALIASES = ["department", "dept", "avdelning"];
 const CREATED_ALIASES = ["creation date", "created", "createdate", "whencreated", "creationdate", "created on"];
