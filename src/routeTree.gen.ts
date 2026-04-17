@@ -9,38 +9,96 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as DocumentationRouteImport } from './routes/documentation'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as DocumentationIndexRouteImport } from './routes/documentation.index'
+import { Route as DocumentationUserGuideRouteImport } from './routes/documentation.user-guide'
+import { Route as DocumentationTechnicalRouteImport } from './routes/documentation.technical'
 
+const DocumentationRoute = DocumentationRouteImport.update({
+  id: '/documentation',
+  path: '/documentation',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DocumentationIndexRoute = DocumentationIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => DocumentationRoute,
+} as any)
+const DocumentationUserGuideRoute = DocumentationUserGuideRouteImport.update({
+  id: '/user-guide',
+  path: '/user-guide',
+  getParentRoute: () => DocumentationRoute,
+} as any)
+const DocumentationTechnicalRoute = DocumentationTechnicalRouteImport.update({
+  id: '/technical',
+  path: '/technical',
+  getParentRoute: () => DocumentationRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/documentation': typeof DocumentationRouteWithChildren
+  '/documentation/technical': typeof DocumentationTechnicalRoute
+  '/documentation/user-guide': typeof DocumentationUserGuideRoute
+  '/documentation/': typeof DocumentationIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/documentation/technical': typeof DocumentationTechnicalRoute
+  '/documentation/user-guide': typeof DocumentationUserGuideRoute
+  '/documentation': typeof DocumentationIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/documentation': typeof DocumentationRouteWithChildren
+  '/documentation/technical': typeof DocumentationTechnicalRoute
+  '/documentation/user-guide': typeof DocumentationUserGuideRoute
+  '/documentation/': typeof DocumentationIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/documentation'
+    | '/documentation/technical'
+    | '/documentation/user-guide'
+    | '/documentation/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/documentation/technical'
+    | '/documentation/user-guide'
+    | '/documentation'
+  id:
+    | '__root__'
+    | '/'
+    | '/documentation'
+    | '/documentation/technical'
+    | '/documentation/user-guide'
+    | '/documentation/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  DocumentationRoute: typeof DocumentationRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/documentation': {
+      id: '/documentation'
+      path: '/documentation'
+      fullPath: '/documentation'
+      preLoaderRoute: typeof DocumentationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -48,11 +106,49 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/documentation/': {
+      id: '/documentation/'
+      path: '/'
+      fullPath: '/documentation/'
+      preLoaderRoute: typeof DocumentationIndexRouteImport
+      parentRoute: typeof DocumentationRoute
+    }
+    '/documentation/user-guide': {
+      id: '/documentation/user-guide'
+      path: '/user-guide'
+      fullPath: '/documentation/user-guide'
+      preLoaderRoute: typeof DocumentationUserGuideRouteImport
+      parentRoute: typeof DocumentationRoute
+    }
+    '/documentation/technical': {
+      id: '/documentation/technical'
+      path: '/technical'
+      fullPath: '/documentation/technical'
+      preLoaderRoute: typeof DocumentationTechnicalRouteImport
+      parentRoute: typeof DocumentationRoute
+    }
   }
 }
 
+interface DocumentationRouteChildren {
+  DocumentationTechnicalRoute: typeof DocumentationTechnicalRoute
+  DocumentationUserGuideRoute: typeof DocumentationUserGuideRoute
+  DocumentationIndexRoute: typeof DocumentationIndexRoute
+}
+
+const DocumentationRouteChildren: DocumentationRouteChildren = {
+  DocumentationTechnicalRoute: DocumentationTechnicalRoute,
+  DocumentationUserGuideRoute: DocumentationUserGuideRoute,
+  DocumentationIndexRoute: DocumentationIndexRoute,
+}
+
+const DocumentationRouteWithChildren = DocumentationRoute._addFileChildren(
+  DocumentationRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  DocumentationRoute: DocumentationRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
