@@ -14,6 +14,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as DocumentationIndexRouteImport } from './routes/documentation.index'
 import { Route as DocumentationUserGuideRouteImport } from './routes/documentation.user-guide'
 import { Route as DocumentationTechnicalRouteImport } from './routes/documentation.technical'
+import { Route as DocumentationChangelogRouteImport } from './routes/documentation.changelog'
 
 const DocumentationRoute = DocumentationRouteImport.update({
   id: '/documentation',
@@ -40,16 +41,23 @@ const DocumentationTechnicalRoute = DocumentationTechnicalRouteImport.update({
   path: '/technical',
   getParentRoute: () => DocumentationRoute,
 } as any)
+const DocumentationChangelogRoute = DocumentationChangelogRouteImport.update({
+  id: '/changelog',
+  path: '/changelog',
+  getParentRoute: () => DocumentationRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/documentation': typeof DocumentationRouteWithChildren
+  '/documentation/changelog': typeof DocumentationChangelogRoute
   '/documentation/technical': typeof DocumentationTechnicalRoute
   '/documentation/user-guide': typeof DocumentationUserGuideRoute
   '/documentation/': typeof DocumentationIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/documentation/changelog': typeof DocumentationChangelogRoute
   '/documentation/technical': typeof DocumentationTechnicalRoute
   '/documentation/user-guide': typeof DocumentationUserGuideRoute
   '/documentation': typeof DocumentationIndexRoute
@@ -58,6 +66,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/documentation': typeof DocumentationRouteWithChildren
+  '/documentation/changelog': typeof DocumentationChangelogRoute
   '/documentation/technical': typeof DocumentationTechnicalRoute
   '/documentation/user-guide': typeof DocumentationUserGuideRoute
   '/documentation/': typeof DocumentationIndexRoute
@@ -67,12 +76,14 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/documentation'
+    | '/documentation/changelog'
     | '/documentation/technical'
     | '/documentation/user-guide'
     | '/documentation/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/documentation/changelog'
     | '/documentation/technical'
     | '/documentation/user-guide'
     | '/documentation'
@@ -80,6 +91,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/documentation'
+    | '/documentation/changelog'
     | '/documentation/technical'
     | '/documentation/user-guide'
     | '/documentation/'
@@ -127,16 +139,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DocumentationTechnicalRouteImport
       parentRoute: typeof DocumentationRoute
     }
+    '/documentation/changelog': {
+      id: '/documentation/changelog'
+      path: '/changelog'
+      fullPath: '/documentation/changelog'
+      preLoaderRoute: typeof DocumentationChangelogRouteImport
+      parentRoute: typeof DocumentationRoute
+    }
   }
 }
 
 interface DocumentationRouteChildren {
+  DocumentationChangelogRoute: typeof DocumentationChangelogRoute
   DocumentationTechnicalRoute: typeof DocumentationTechnicalRoute
   DocumentationUserGuideRoute: typeof DocumentationUserGuideRoute
   DocumentationIndexRoute: typeof DocumentationIndexRoute
 }
 
 const DocumentationRouteChildren: DocumentationRouteChildren = {
+  DocumentationChangelogRoute: DocumentationChangelogRoute,
   DocumentationTechnicalRoute: DocumentationTechnicalRoute,
   DocumentationUserGuideRoute: DocumentationUserGuideRoute,
   DocumentationIndexRoute: DocumentationIndexRoute,

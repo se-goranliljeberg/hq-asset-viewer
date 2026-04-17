@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { AlertTriangle, Info, CheckCircle2 } from "lucide-react";
+import { DocVersionBadge } from "@/components/DocVersionBadge";
 
 export const Route = createFileRoute("/documentation/user-guide")({
   component: UserGuide,
@@ -40,7 +41,10 @@ function UserGuide() {
   return (
     <article className="space-y-8 max-w-3xl">
       <header className="space-y-3">
-        <Badge variant="secondary">For end users</Badge>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <Badge variant="secondary">For end users</Badge>
+          <DocVersionBadge />
+        </div>
         <h1 className="text-3xl font-bold tracking-tight">User Guide</h1>
         <p className="text-muted-foreground">
           A practical walkthrough of every feature in the HQ Asset Viewer — what to do, what

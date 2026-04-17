@@ -47,16 +47,25 @@ const CANONICAL_ORDER = [
   "Status", "Warranty until", "AD Create.Date", "Company", "Email", "Department",
 ] as const;
 
+// Virtual app-managed columns — always shown even when the source file
+// has no matching header. Their values come from the edits store, not row.raw.
+const VIRTUAL_CANONICAL = new Set<string>(["Status", "Warranty until"]);
+const TAIL_COLS = ["Exceptions", COMMENTS_COL, "Source file"];
+
 // Build the default display column order: canonical fields in fixed order
-// (only those present), then any extras, then Exceptions / Comments / Source file.
+// (virtual ones always included; the rest only when present in the source data),
+// then any extras, then Exceptions / Comments / Source file.
 function buildDefaultOrder(columns: string[]): string[] {
   const present = new Set(columns);
-  const canonical = CANONICAL_ORDER.filter((c) => present.has(c));
-  const extras = columns.filter(
-    (c) => !canonical.includes(c as (typeof CANONICAL_ORDER)[number]) && !["Exceptions", COMMENTS_COL, "Source file"].includes(c),
+  const canonical = CANONICAL_ORDER.filter(
+    (c) => VIRTUAL_CANONICAL.has(c) || present.has(c),
   );
-  const tail = ["Exceptions", COMMENTS_COL, "Source file"];
-  return [...canonical, ...extras, ...tail];
+  const extras = columns.filter(
+    (c) =>
+      !canonical.includes(c as (typeof CANONICAL_ORDER)[number]) &&
+      !TAIL_COLS.includes(c),
+  );
+  return [...canonical, ...extras, ...TAIL_COLS];
 }
 
 // Reconcile a saved order against current columns: keep saved positions where

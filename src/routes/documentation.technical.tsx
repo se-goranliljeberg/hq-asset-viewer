@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { DocVersionBadge } from "@/components/DocVersionBadge";
 
 export const Route = createFileRoute("/documentation/technical")({
   component: TechnicalDoc,
@@ -37,7 +38,10 @@ function TechnicalDoc() {
   return (
     <article className="space-y-8 max-w-3xl">
       <header className="space-y-3">
-        <Badge variant="secondary">For IT & Security review</Badge>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <Badge variant="secondary">For IT & Security review</Badge>
+          <DocVersionBadge />
+        </div>
         <h1 className="text-3xl font-bold tracking-tight">Technical & Security Documentation</h1>
         <p className="text-muted-foreground">
           This document describes the architecture, data handling and security characteristics of

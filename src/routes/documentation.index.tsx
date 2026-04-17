@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ShieldCheck, FileText, ArrowRight } from "lucide-react";
+import { ShieldCheck, FileText, ArrowRight, History } from "lucide-react";
+import { DocVersionBadge } from "@/components/DocVersionBadge";
 
 export const Route = createFileRoute("/documentation/")({
   component: DocumentationOverview,
@@ -15,9 +16,12 @@ export const Route = createFileRoute("/documentation/")({
 function DocumentationOverview() {
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Documentation</h1>
-        <p className="mt-2 text-muted-foreground">
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <h1 className="text-3xl font-bold tracking-tight">Documentation</h1>
+          <DocVersionBadge />
+        </div>
+        <p className="text-muted-foreground">
           Everything you need to evaluate, approve, and operate the HQ Asset Viewer.
         </p>
       </div>
