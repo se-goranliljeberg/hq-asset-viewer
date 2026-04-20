@@ -494,6 +494,54 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                     );
                   }
 
+                  // Clickable Username / Computername — open the relevant drawer.
+                  if (col === "Username" && onOpenUser) {
+                    const val = row.user || row.raw[col] || "";
+                    return (
+                      <div
+                        key={col}
+                        className="px-1 py-0.5 flex items-center"
+                        style={{ width: w, minWidth: MIN_COL_W }}
+                      >
+                        {val ? (
+                          <button
+                            type="button"
+                            onClick={() => onOpenUser(val)}
+                            className="truncate text-left text-primary hover:underline px-2 py-1 rounded-sm hover:bg-primary/10 transition-colors w-full"
+                            title={`View user history: ${val}`}
+                          >
+                            {val}
+                          </button>
+                        ) : (
+                          <span className="px-3 py-1.5 text-muted-foreground italic text-xs">—</span>
+                        )}
+                      </div>
+                    );
+                  }
+                  if (col === "Computername" && onOpenAsset) {
+                    const val = row.computername || row.raw[col] || "";
+                    return (
+                      <div
+                        key={col}
+                        className="px-1 py-0.5 flex items-center"
+                        style={{ width: w, minWidth: MIN_COL_W }}
+                      >
+                        {val ? (
+                          <button
+                            type="button"
+                            onClick={() => onOpenAsset(row)}
+                            className="truncate text-left text-primary hover:underline px-2 py-1 rounded-sm hover:bg-primary/10 transition-colors w-full"
+                            title={`View asset history: ${val}`}
+                          >
+                            {val}
+                          </button>
+                        ) : (
+                          <span className="px-3 py-1.5 text-muted-foreground italic text-xs">—</span>
+                        )}
+                      </div>
+                    );
+                  }
+
                   // Editable raw data columns — double-click to edit
                   const val = row.raw[col] ?? "";
                   const isLastLogon = col === "Last logon date";
