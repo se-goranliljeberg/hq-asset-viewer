@@ -16,7 +16,7 @@ interface Props {
 }
 
 export function KpiCards({ rows, edits, staleThreshold, activeCard, onCardClick }: Props) {
-  const total = rows.length;
+  const total = rows.filter((r) => r.computername.trim() !== "").length;
   const uniqueUsers = new Set(rows.map((r) => r.user.toLowerCase()).filter(Boolean)).size;
   const uniqueModels = new Set(rows.map((r) => r.modell.toLowerCase()).filter(Boolean)).size;
   const exceptions = rows.filter((r) => r.exceptions.length > 0).length;
