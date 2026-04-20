@@ -883,8 +883,7 @@ export function AssetViewer() {
     setStatusFilter(defaultStatusFilter);
     setExceptionsOnly(false);
     setExcludeInactive(false);
-    setSkanskaFilter("skanska");
-    setSort({ column: "", dir: null });
+    setSkanskaFilter("all");
     setConfirmClear(false);
     toast.success("Local data cleared.");
   }, [setData, defaultStatusFilter]);
@@ -911,8 +910,7 @@ export function AssetViewer() {
     setStatusFilter(defaultStatusFilter);
     setExceptionsOnly(false);
     setExcludeInactive(false);
-    setSkanskaFilter("skanska");
-    setActiveCard(null);
+    setSkanskaFilter("all");
     toast.success("Filters reset to defaults.");
   }, [defaultStatusFilter]);
 
