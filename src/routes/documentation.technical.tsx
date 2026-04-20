@@ -149,12 +149,16 @@ function TechnicalDoc() {
         </p>
         <ul className="list-disc list-inside space-y-1 mt-2 font-mono text-xs">
           <li><code>hq_asset_data</code> — parsed asset rows + columns</li>
-          <li><code>hq_asset_edits</code> — manual edits & comments per row</li>
+          <li><code>hq_asset_edits</code> — manual edits & comments per row (incl. userActive, skanskaComputer)</li>
           <li><code>hq_asset_column_order</code> — user&rsquo;s column ordering</li>
           <li><code>hq_asset_column_widths</code> — user&rsquo;s column widths</li>
           <li><code>hq_mapping_*</code> — saved column mappings keyed by header-set hash</li>
           <li><code>hq_canonical_migrated_v1</code> — one-time migration flag</li>
           <li><code>hq_audit_user_initials</code> — initials shown in audit log entries</li>
+          <li><code>hq_filter_managers</code> — Manager filter chip selections</li>
+          <li><code>hq_filter_exclude_inactive</code> — &ldquo;Hide inactive&rdquo; toggle state</li>
+          <li><code>hq_filter_skanska</code> — Skanska tri-state filter (all / skanska / non-skanska)</li>
+          <li><code>hq_stale_threshold_days</code> — configurable stale-logon threshold (default 90)</li>
           <li><code>hq_last_seen_version</code> — last app version seen by this browser (used by the &ldquo;What&rsquo;s new&rdquo; toast)</li>
         </ul>
         <p className="mt-2">
@@ -304,12 +308,14 @@ npm run bump:major    # major  e.g. 0.2.0 → 1.0.0`}
           <em> Comments </em> column in the format:
         </p>
         <pre className="rounded-md bg-secondary/40 border border-border p-3 text-xs mt-2">
-{`Date: YYYY-MM-DD Change: <field> from "<old>" to "<new>"`}
+{`Date: YYYY-MM-DD HH:MM [INI] Change: <field> from "<old>" to "<new>"`}
         </pre>
         <p className="mt-2">
           Multiple entries are joined with <code> | </code>. Existing comments are never
           overwritten. The Comments column is included in CSV exports, so the audit trail follows
-          the data wherever it goes.
+          the data wherever it goes. Since v0.3.0 timestamps include hours and minutes (HH:MM)
+          and a single combined entry is written when an import overwrites multiple fields on the
+          same row.
         </p>
       </Section>
 
