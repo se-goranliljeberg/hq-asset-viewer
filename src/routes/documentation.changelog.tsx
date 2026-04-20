@@ -30,13 +30,23 @@ const RELEASES: Release[] = [
   {
     version: "0.3.0",
     date: "2026-04-20",
-    title: "TODO — describe this release",
+    title: "Username-as-master imports, Active/Skanska tracking, stale-logon highlighting & Manager filter",
     added: [
-      "TODO: list new features added in this release.",
+      "Username-as-master duplicate handling on import: incoming rows whose Username already exists open a new Import Conflict dialog showing field-by-field diffs (existing vs incoming); the user picks exactly which fields to overwrite per row. Truly-new rows still flow through the normal Add path.",
+      "Two new canonical columns: 'User Active?' and 'Skanska computer?' (Yes/No). Both are importable (with aliases like enabled/disabled, company device, etc.), inline-editable, exported to CSV, and always shown in the table.",
+      "Inactive users (User Active? = No) are flagged with a new 'Inactive user' exception and hidden by default via a persisted 'Hide inactive' filter.",
+      "Skanska computer tri-state filter (All / Skanska / Non-Skanska), defaulting to Skanska only. Rows with empty Computername keep Skanska computer? blank and are not auto-classified.",
+      "Stale Last logon date highlighting: values older than the configurable threshold are rendered in amber with a 'X days since last logon' tooltip.",
+      "New 'Stale (>Nd)' KPI card (5-card grid) that filters the table to stale accounts when clicked.",
+      "Configurable stale threshold (default 90 days) with a small inline input in the FilterBar, persisted to localStorage (hq_stale_threshold_days).",
+      "Manager filter chip in the FilterBar: multi-select with search over rows[].raw['Manager'], persisted to localStorage like the other filters, and shown in the active filter chips row.",
+      "Warranty change comments are now logged in the same audit comment stream as other edits, with HH:MM timestamps in addition to the date.",
     ],
-    // changed: ["TODO: list behavior changes."],
-    // fixed:   ["TODO: list bug fixes."],
-    // removed: ["TODO: list removed features."],
+    changed: [
+      "Total Assets KPI now counts rows with a non-empty Computername (instead of all rows), so users-only entries no longer inflate the asset count.",
+      "Audit-log timestamp format extended to include HH:MM alongside the date.",
+      "KPI card grid is now 5 columns on md+ screens to fit the new Stale card.",
+    ],
   },
   {
     version: "0.2.0",
