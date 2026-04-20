@@ -38,6 +38,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Upload, Trash2, Download, ShieldCheck, RefreshCw, Plus, Bug, BookOpen } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { AddRowDialog } from "./AddRowDialog";
+import { ReplaceDeviceDialog } from "./ReplaceDeviceDialog";
 import { ImportDebugger } from "./ImportDebugger";
 import { ColumnMappingDialog } from "./ColumnMappingDialog";
 import { InitialsPromptDialog } from "./InitialsPromptDialog";
@@ -130,6 +131,7 @@ export function AssetViewer() {
   const [pendingSheets, setPendingSheets] = useState<string[]>([]);
   const [importModeOpen, setImportModeOpen] = useState(false);
   const [addRowOpen, setAddRowOpen] = useState(false);
+  const [replaceOpen, setReplaceOpen] = useState(false);
   const [debugOpen, setDebugOpen] = useState(false);
   const [pendingIsUsersFile, setPendingIsUsersFile] = useState(false);
   const pendingBuffer = useRef<ArrayBuffer | null>(null);
@@ -517,6 +519,74 @@ export function AssetViewer() {
       toast.success(`Added manual row "${computername || "Unnamed"}"`);
     });
   }, [data, setData, ensureInitials]);
+
+  const handleReplaceDevice = useCallback(
+    (rowId: number, newComputername: string, newModell: string, warrantyUntil: string) => {
+      if (!data) return;
+      ensureInitials(() => {
+        const target = data.rows.find((r) => r.id === rowId);
+        if (!target) return;
+        const oldComputername = target.computername;
+        const oldModell = target.modell;
+
+        // Find raw column keys (case-insensitive) so we update the displayed cells too.
+        const keys = Object.keys(target.raw);
+        const cnKey = keys.find((k) => k.toLowerCase() === "computername");
+        const modelKey = keys.find((k) => k.toLowerCase() === "modell");
+
+        const newRaw = { ...target.raw };
+        if (cnKey) newRaw[cnKey] = newComputername;
+        else newRaw["Computername"] = newComputername;
+        if (modelKey) newRaw[modelKey] = newModell;
+        else newRaw["Modell"] = newModell;
+
+        // Recompute exceptions for the relevant fields.
+        const remaining = target.exceptions.filter(
+          (e) => e !== "Missing Computername" && e !== "Missing Modell",
+        );
+        const exceptions = [...remaining];
+        if (!newComputername) exceptions.push("Missing Computername");
+        if (!newModell) exceptions.push("Missing Modell");
+
+        const updatedRow: AssetRow = {
+          ...target,
+          raw: newRaw,
+          computername: newComputername,
+          modell: newModell,
+          exceptions,
+        };
+        const updatedData: AssetData = {
+          ...data,
+          rows: data.rows.map((r) => (r.id === rowId ? updatedRow : r)),
+        };
+        setData(updatedData);
+
+        // Append a single audit entry summarising the swap, plus a warranty entry if provided.
+        setEditsState((prev) => {
+          const key = getEditKey(rowId);
+          const current = prev[key] ?? { status: "", warrantyUntil: "" };
+          const summary = `Device replaced: Computername from "${oldComputername || "(empty)"}" to "${newComputername}", Modell from "${oldModell || "(empty)"}" to "${newModell}"`;
+          let comment = appendComment(current.comment, summary);
+          let nextWarranty = current.warrantyUntil;
+          if (warrantyUntil) {
+            comment = appendComment(
+              comment,
+              describeChange("Warranty until", current.warrantyUntil ?? "", warrantyUntil),
+            );
+            nextWarranty = warrantyUntil;
+          }
+          const next = {
+            ...prev,
+            [key]: { ...current, warrantyUntil: nextWarranty, comment },
+          };
+          saveEdits(next);
+          return next;
+        });
+        toast.success(`Replaced device for "${target.user || "user"}" → ${newComputername}`);
+      });
+    },
+    [data, setData, ensureInitials],
+  );
 
   const openMappingFor = useCallback((buffer: ArrayBuffer, sheet: string, filename: string) => {
     pendingBuffer.current = buffer;
@@ -912,6 +982,15 @@ export function AssetViewer() {
                         ))}
                       </SelectContent>
                     </Select>
+                    {selectedIds.size === 1 && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setReplaceOpen(true)}
+                      >
+                        <RefreshCw className="h-3.5 w-3.5 mr-1" /> Replace device
+                      </Button>
+                    )}
                     <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>
                       Deselect all
                     </Button>
@@ -1025,6 +1104,17 @@ export function AssetViewer() {
           onOpenChange={setAddRowOpen}
           columns={columns}
           onSave={handleAddRow}
+        />
+
+        <ReplaceDeviceDialog
+          open={replaceOpen}
+          onOpenChange={setReplaceOpen}
+          row={
+            selectedIds.size === 1
+              ? rows.find((r) => r.id === Array.from(selectedIds)[0]) ?? null
+              : null
+          }
+          onReplace={handleReplaceDevice}
         />
 
         <ImportDebugger open={debugOpen} onOpenChange={setDebugOpen} />
