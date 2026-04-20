@@ -28,6 +28,17 @@ interface Release {
 
 const RELEASES: Release[] = [
   {
+    version: "0.3.0",
+    date: "2026-04-20",
+    title: "TODO — describe this release",
+    added: [
+      "TODO: list new features added in this release.",
+    ],
+    // changed: ["TODO: list behavior changes."],
+    // fixed:   ["TODO: list bug fixes."],
+    // removed: ["TODO: list removed features."],
+  },
+  {
     version: "0.2.0",
     date: "2026-04-17",
     title: "Documentation, change history & undo",
