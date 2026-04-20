@@ -23,8 +23,14 @@ interface RowWithStatus {
   status: string;
 }
 
+type CategoryFilter = "in-stock" | "deployed" | "broker" | "handover" | null;
+
 export function AssetManagementView({ rows, edits, onOpenUser, onOpenAsset }: Props) {
   const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>(null);
+
+  const toggleFilter = (key: Exclude<CategoryFilter, null>) =>
+    setCategoryFilter((cur) => (cur === key ? null : key));
 
   const enriched: RowWithStatus[] = useMemo(
     () =>
@@ -92,28 +98,62 @@ export function AssetManagementView({ rows, edits, onOpenUser, onOpenAsset }: Pr
           label="In stock"
           value={inStock.length}
           tone="primary"
+          active={categoryFilter === "in-stock"}
+          onClick={() => toggleFilter("in-stock")}
         />
         <KpiTile
           icon={<Monitor className="h-4 w-4" />}
           label="Deployed at user"
           value={deployed.length}
           tone="default"
+          active={categoryFilter === "deployed"}
+          onClick={() => toggleFilter("deployed")}
         />
         <KpiTile
           icon={<Send className="h-4 w-4" />}
           label="Sent back to broker"
           value={broker.length}
           tone="muted"
+          active={categoryFilter === "broker"}
+          onClick={() => toggleFilter("broker")}
         />
         <KpiTile
           icon={<Users className="h-4 w-4" />}
           label="Users w/ handover"
           value={handoverUsers.length}
           tone="warning"
+          active={categoryFilter === "handover"}
+          onClick={() => toggleFilter("handover")}
         />
       </div>
 
-      {noStatus.length > 0 && (
+      {categoryFilter && (
+        <div className="flex items-center gap-2">
+          <Badge variant="secondary" className="gap-1.5">
+            Filter:{" "}
+            {categoryFilter === "in-stock"
+              ? "In stock"
+              : categoryFilter === "deployed"
+                ? "Deployed at user"
+                : categoryFilter === "broker"
+                  ? "Sent back to broker"
+                  : "Users w/ handover"}
+            <button
+              type="button"
+              onClick={() => setCategoryFilter(null)}
+              className="ml-1 hover:text-destructive"
+              aria-label="Clear filter"
+            >
+              ✕
+            </button>
+          </Badge>
+          <span className="text-xs text-muted-foreground">
+            Click a tile again to clear.
+          </span>
+        </div>
+      )}
+
+      {noStatus.length > 0 && !categoryFilter && (
         <p className="text-xs text-muted-foreground">
           {noStatus.length} computer row{noStatus.length === 1 ? "" : "s"} have no
           lifecycle status set yet — set Status on those rows to include them in
@@ -131,37 +171,44 @@ export function AssetManagementView({ rows, edits, onOpenUser, onOpenAsset }: Pr
         />
       </div>
 
-      <DeviceTable
-        title="In stock — available for re-deployment"
-        icon={<Boxes className="h-4 w-4" />}
-        items={inStock.filter(filterFn)}
-        emptyMessage="No devices in stock."
-        onOpenAsset={onOpenAsset}
-        onOpenUser={onOpenUser}
-        showUser={false}
-      />
+      {(categoryFilter === null || categoryFilter === "in-stock") && (
+        <DeviceTable
+          title="In stock — available for re-deployment"
+          icon={<Boxes className="h-4 w-4" />}
+          items={inStock.filter(filterFn)}
+          emptyMessage="No devices in stock."
+          onOpenAsset={onOpenAsset}
+          onOpenUser={onOpenUser}
+          showUser={false}
+        />
+      )}
 
-      <DeviceTable
-        title="Deployed at user"
-        icon={<Monitor className="h-4 w-4" />}
-        items={deployed.filter(filterFn)}
-        emptyMessage="No devices currently deployed."
-        onOpenAsset={onOpenAsset}
-        onOpenUser={onOpenUser}
-        showUser
-      />
+      {(categoryFilter === null || categoryFilter === "deployed") && (
+        <DeviceTable
+          title="Deployed at user"
+          icon={<Monitor className="h-4 w-4" />}
+          items={deployed.filter(filterFn)}
+          emptyMessage="No devices currently deployed."
+          onOpenAsset={onOpenAsset}
+          onOpenUser={onOpenUser}
+          showUser
+        />
+      )}
 
-      <DeviceTable
-        title="Sent back to broker"
-        icon={<Send className="h-4 w-4" />}
-        items={broker.filter(filterFn)}
-        emptyMessage="No devices have been sent back."
-        onOpenAsset={onOpenAsset}
-        onOpenUser={onOpenUser}
-        showUser={false}
-      />
+      {(categoryFilter === null || categoryFilter === "broker") && (
+        <DeviceTable
+          title="Sent back to broker"
+          icon={<Send className="h-4 w-4" />}
+          items={broker.filter(filterFn)}
+          emptyMessage="No devices have been sent back."
+          onOpenAsset={onOpenAsset}
+          onOpenUser={onOpenUser}
+          showUser={false}
+        />
+      )}
 
       {/* Handover panel */}
+      {(categoryFilter === null || categoryFilter === "handover") && (
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-semibold flex items-center gap-2">
