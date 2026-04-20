@@ -39,7 +39,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Upload, Trash2, Download, ShieldCheck, RefreshCw, Plus, Bug, BookOpen } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { AddRowDialog } from "./AddRowDialog";
-import { ReplaceDeviceDialog } from "./ReplaceDeviceDialog";
+import { ReplaceDeviceDialog, type ReplaceSource, type OldDeviceDestination } from "./ReplaceDeviceDialog";
 import { ImportDebugger } from "./ImportDebugger";
 import { ColumnMappingDialog } from "./ColumnMappingDialog";
 import { InitialsPromptDialog } from "./InitialsPromptDialog";
@@ -48,7 +48,8 @@ import { APP_VERSION, useHasUnseenVersion } from "@/lib/version-state";
 import { loadImportMeta, saveImportMeta, mergeImportMeta, type ImportMeta } from "@/lib/import-meta";
 import { ImportConflictDialog, type ConflictResolutions } from "./ImportConflictDialog";
 import { loadStaleThreshold, saveStaleThreshold, DEFAULT_STALE_THRESHOLD_DAYS } from "@/lib/stale-config";
-import { effectiveSkanska, effectiveUserActive, effectiveExceptions } from "@/lib/asset-edits";
+import { effectiveSkanska, effectiveUserActive, effectiveExceptions, recordLifecycleEvent } from "@/lib/asset-edits";
+import type { LifecycleState } from "@/lib/asset-types";
 
 import { toast } from "sonner";
 
