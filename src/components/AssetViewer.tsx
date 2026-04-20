@@ -1005,7 +1005,7 @@ export function AssetViewer() {
       });
     }
     return result;
-  }, [rows, columns, search, modelFilter, userFilter, sourceFilter, statusFilter, exceptionsOnly, activeCard, sort, edits]);
+  }, [rows, columns, search, modelFilter, userFilter, managerFilter, sourceFilter, statusFilter, exceptionsOnly, excludeInactive, skanskaFilter, activeCard, sort, edits, staleThreshold]);
 
   const activeChips = useMemo<FilterChip[]>(() => {
     const out: FilterChip[] = [];
