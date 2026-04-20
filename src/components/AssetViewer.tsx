@@ -429,6 +429,63 @@ export function AssetViewer() {
     ensureInitials(() => performEdit(rowId, field, value));
   }, [performEdit, ensureInitials, data, handleStatusReturnSplit]);
 
+  /**
+   * Apply a batch edit to all currently selected rows.
+   * - For Yes/No fields (userActive, skanskaComputer) and status, sets the
+   *   value and appends a "(batch)" audit entry per row that actually changed.
+   * - For "comment", appends a free-text note to every selected row.
+   */
+  const applyBatchEdit = useCallback(
+    (
+      ids: Set<number>,
+      kind: "userActive" | "skanskaComputer" | "comment",
+      value: string,
+    ) => {
+      if (ids.size === 0) return;
+      ensureInitials(() => {
+        setEditsState((prev) => {
+          const next = { ...prev };
+          let changed = 0;
+          for (const id of ids) {
+            const key = getEditKey(id);
+            const current = next[key] ?? { status: "" as AssetStatus, warrantyUntil: "" };
+            if (kind === "comment") {
+              next[key] = {
+                ...current,
+                comment: appendComment(current.comment, `[note] ${value} (batch)`),
+              };
+              changed += 1;
+              continue;
+            }
+            const fieldLabel = kind === "userActive" ? "User Active?" : "Skanska computer?";
+            const before = current[kind] ?? "";
+            const after = value as YesNo;
+            if (before === after) continue;
+            next[key] = {
+              ...current,
+              [kind]: after,
+              comment: appendComment(
+                current.comment,
+                `${describeChange(fieldLabel, before, after)} (batch)`,
+              ),
+            };
+            changed += 1;
+          }
+          saveEdits(next);
+          if (kind === "comment") {
+            toast.success(`Added comment to ${changed} row${changed === 1 ? "" : "s"}`);
+          } else {
+            toast.success(
+              `Updated ${kind === "userActive" ? "User Active?" : "Skanska computer?"} on ${changed} row${changed === 1 ? "" : "s"}`,
+            );
+          }
+          return next;
+        });
+      });
+    },
+    [ensureInitials],
+  );
+
   const performCellEdit = useCallback((rowId: number, column: string, value: string) => {
     if (!data) return;
     let prevValue = "";
