@@ -587,6 +587,8 @@ export function AssetViewer() {
     },
     [data, setData, ensureInitials],
   );
+
+  const openMappingFor = useCallback((buffer: ArrayBuffer, sheet: string, filename: string) => {
     pendingBuffer.current = buffer;
     pendingFilename.current = filename;
     pendingSheet.current = sheet;
