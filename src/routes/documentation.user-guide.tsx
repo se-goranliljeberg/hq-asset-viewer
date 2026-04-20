@@ -98,10 +98,10 @@ function UserGuide() {
           you&rsquo;ll see every header from the source file with a sample value. On the right you
           choose which canonical field it should become — or <strong>Ignore</strong> to drop it.
         </p>
-        <p className="mt-2">The 11 canonical fields the app understands are:</p>
+        <p className="mt-2">The 13 canonical fields the app understands are:</p>
         <p className="mt-1 font-mono text-xs">
           Username · Name · Computername · Modell · Last account activity · Status · Warranty until
-          · AD Create.Date · Company · Email · Department
+          · AD Create.Date · Company · Email · Department · User Active? · Skanska computer?
         </p>
         <Info_>
           The app pre-fills the mapping using known aliases (e.g. <code>mail</code> → Email,
