@@ -137,6 +137,20 @@ export function AuditDashboard({ rows, edits }: Props) {
   const nonSkanskaUsers = users.filter((u) => u.hasNonSkanska).length;
   const usersWithExceptions = users.filter((u) => u.exceptions.length > 0).length;
   const staleUsers = users.filter((u) => u.staleCount > 0).length;
+  // Leavers who still have a Skanska computer assigned. Computed from rows
+  // directly so we count any inactive user holding a non-empty computername.
+  const leaversWithDevice = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of rows) {
+      const e = edits[getEditKey(r.id)];
+      if (effectiveUserActive(e) !== "no") continue;
+      if (!r.computername.trim()) continue;
+      const key = (r.user || r.raw["Username"] || "").trim().toLowerCase();
+      if (!key) continue;
+      set.add(key);
+    }
+    return set.size;
+  }, [rows, edits]);
 
   const kpis: { label: string; value: number; icon: typeof Users; color: string; tooltip: string }[] = [
     {
@@ -152,6 +166,13 @@ export function AuditDashboard({ rows, edits }: Props) {
       icon: UserX,
       color: "text-destructive",
       tooltip: "Users where any row has 'User Active?' set to No — likely leavers whose accounts/devices need follow-up.",
+    },
+    {
+      label: "Leavers w/ Device",
+      value: leaversWithDevice,
+      icon: AlertTriangle,
+      color: "text-destructive",
+      tooltip: "Inactive users (User Active? = No) who still have a Computername assigned. These rows carry the new 'Assigned to inactive user' exception and should be top of the off-boarding list.",
     },
     {
       label: "Without Computer",
@@ -179,7 +200,7 @@ export function AuditDashboard({ rows, edits }: Props) {
       value: usersWithExceptions,
       icon: AlertTriangle,
       color: "text-destructive",
-      tooltip: "Users whose rows carry one or more data-quality flags (Missing user, Inactive user, Warranty expired, etc.).",
+      tooltip: "Users whose rows carry one or more data-quality flags (Missing user, Inactive user, Assigned to inactive user, Warranty expired, etc.).",
     },
     {
       label: `Stale (>${staleThreshold}d)`,
