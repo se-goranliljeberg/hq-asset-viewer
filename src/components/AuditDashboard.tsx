@@ -31,8 +31,19 @@ interface UserSummary {
   staleCount: number;      // rows with stale Last logon date
   exceptions: string[];    // distinct exceptions across rows
   lastLogon: string;       // most recent Last logon date string we saw
+  isLeaverWithDevice: boolean; // inactive AND owns at least one computername
   rows: AssetRow[];
 }
+
+type AuditFilterKey =
+  | null
+  | "inactive"
+  | "leaverWithDevice"
+  | "withoutComputer"
+  | "multiComputer"
+  | "nonSkanska"
+  | "withExceptions"
+  | "stale";
 
 function uniq(values: string[]): string[] {
   const seen = new Set<string>();
@@ -58,6 +69,7 @@ function maxDateString(a: string, b: string): string {
 
 export function AuditDashboard({ rows, edits }: Props) {
   const [search, setSearch] = useState("");
+  const [filterKey, setFilterKey] = useState<AuditFilterKey>(null);
   const staleThreshold = loadStaleThreshold();
 
   const users: UserSummary[] = useMemo(() => {
@@ -87,6 +99,7 @@ export function AuditDashboard({ rows, edits }: Props) {
           staleCount: 0,
           exceptions: [],
           lastLogon: "",
+          isLeaverWithDevice: false,
           rows: [],
         };
         map.set(key, entry);
@@ -101,6 +114,7 @@ export function AuditDashboard({ rows, edits }: Props) {
       entry.exceptions.push(...effectiveExceptions(r, e));
       entry.lastLogon = maxDateString(entry.lastLogon, r.raw["Last logon date"] ?? "");
       if (isInactive) entry.active = false;
+      if (isInactive && r.computername.trim()) entry.isLeaverWithDevice = true;
       if (isNonSkanska) entry.hasNonSkanska = true;
       if (stale) entry.staleCount++;
     }
