@@ -38,6 +38,10 @@ interface Props {
   onSelectionChange: (ids: Set<number>) => void;
   importedAt?: ImportMeta;
   staleThreshold: number;
+  /** Open the user-history drawer for this username. */
+  onOpenUser?: (user: string) => void;
+  /** Open the asset-history drawer for this row. */
+  onOpenAsset?: (row: AssetRow) => void;
 }
 
 const MIN_COL_W = 80;
@@ -144,7 +148,7 @@ function InlineCell({ value, width, col, rowId, onCellEdit }: {
   );
 }
 
-export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellEdit, onUndoLast, selectedIds, onSelectionChange, importedAt, staleThreshold }: Props) {
+export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellEdit, onUndoLast, selectedIds, onSelectionChange, importedAt, staleThreshold, onOpenUser, onOpenAsset }: Props) {
   const parentRef = useRef<HTMLDivElement>(null);
 
   // Persisted column order
