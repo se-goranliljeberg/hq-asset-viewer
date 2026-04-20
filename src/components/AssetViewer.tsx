@@ -47,6 +47,8 @@ import { WhatsNewToast } from "./WhatsNewToast";
 import { MultiAssetImportDialog, type MultiAssetResolution } from "./MultiAssetImportDialog";
 import { AssetHistoryDrawer } from "./AssetHistoryDrawer";
 import { UserHistoryDrawer } from "./UserHistoryDrawer";
+import { AssetManagementView } from "./AssetManagementView";
+import { UserHistoryView } from "./UserHistoryView";
 import { APP_VERSION, useHasUnseenVersion } from "@/lib/version-state";
 import { loadImportMeta, saveImportMeta, mergeImportMeta, type ImportMeta } from "@/lib/import-meta";
 import { ImportConflictDialog, type ConflictResolutions } from "./ImportConflictDialog";
@@ -1441,6 +1443,8 @@ export function AssetViewer() {
               <TabsList className="w-fit">
                 <TabsTrigger value="table">Asset List</TabsTrigger>
                 <TabsTrigger value="audit">Audit Report</TabsTrigger>
+                <TabsTrigger value="management">Asset Management</TabsTrigger>
+                <TabsTrigger value="users">User History</TabsTrigger>
               </TabsList>
 
               <TabsContent value="table" className="flex flex-1 flex-col gap-4 overflow-hidden mt-4">
