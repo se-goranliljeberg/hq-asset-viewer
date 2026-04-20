@@ -14,12 +14,13 @@ import {
 import {
   getSheetNames, parseSheetWithMapping, mergeData, enrichWithUsers,
   inspectSheet, headerSetHash, migrateToCanonical,
-  type Mapping, type ParseResult,
+  detectUsernameConflicts,
+  type Mapping, type ParseResult, type UsernameConflict,
 } from "@/lib/excel-parser";
 import { exportCSV } from "@/lib/csv-export";
 import { KpiCards } from "./KpiCards";
 import type { KpiKey } from "./KpiCards";
-import { FilterBar, STATUS_NONE_TOKEN } from "./FilterBar";
+import { FilterBar, STATUS_NONE_TOKEN, type SkanskaFilter } from "./FilterBar";
 import { ActiveFilterChips, type FilterChip } from "./ActiveFilterChips";
 import { AssetTable } from "./AssetTable";
 import { AuditDashboard } from "./AuditDashboard";
@@ -45,14 +46,20 @@ import { InitialsPromptDialog } from "./InitialsPromptDialog";
 import { WhatsNewToast } from "./WhatsNewToast";
 import { APP_VERSION, useHasUnseenVersion } from "@/lib/version-state";
 import { loadImportMeta, saveImportMeta, mergeImportMeta, type ImportMeta } from "@/lib/import-meta";
+import { ImportConflictDialog, type ConflictResolutions } from "./ImportConflictDialog";
+import { loadStaleThreshold, saveStaleThreshold, DEFAULT_STALE_THRESHOLD_DAYS } from "@/lib/stale-config";
+import { effectiveSkanska, effectiveUserActive } from "@/lib/asset-edits";
 
 import { toast } from "sonner";
 
 const FILTER_STORAGE_KEYS = {
   models: "hq_filter_models",
   users: "hq_filter_users",
+  managers: "hq_filter_managers",
   sources: "hq_filter_sources",
   status: "hq_filter_status",
+  excludeInactive: "hq_filter_exclude_inactive",
+  skanska: "hq_filter_skanska",
 } as const;
 
 function loadFilterFromStorage(key: string, fallback: string[]): string[] {
