@@ -305,8 +305,23 @@ export function AssetViewer() {
       performEdit(rowId, field, value);
       return;
     }
+    // Special-case: setting Status to "In stock" or "Sent back to broker"
+    // on a row that has BOTH a user and a computername should split the row:
+    // the user stays on the original row (without the device), and the
+    // device spins off into its own row with the chosen lifecycle status.
+    if (
+      field === "status" &&
+      (value === "In stock" || value === "Sent back to broker") &&
+      data
+    ) {
+      const target = data.rows.find((r) => r.id === rowId);
+      if (target && target.user.trim() && target.computername.trim()) {
+        ensureInitials(() => handleStatusReturnSplit(rowId, value));
+        return;
+      }
+    }
     ensureInitials(() => performEdit(rowId, field, value));
-  }, [performEdit, ensureInitials]);
+  }, [performEdit, ensureInitials, data]);
 
   const performCellEdit = useCallback((rowId: number, column: string, value: string) => {
     if (!data) return;
