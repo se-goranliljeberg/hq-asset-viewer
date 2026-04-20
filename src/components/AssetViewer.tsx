@@ -1591,6 +1591,33 @@ export function AssetViewer() {
                   }}
                 />
               </TabsContent>
+
+              <TabsContent value="management" className="flex-1 overflow-auto mt-4">
+                <AssetManagementView
+                  rows={rows}
+                  edits={edits}
+                  onOpenUser={(u) => {
+                    setUserDrawerKey(u.trim().toLowerCase());
+                    setUserDrawerDisplay(u);
+                    setUserDrawerOpen(true);
+                  }}
+                  onOpenAsset={(r) => {
+                    setHistoryDrawerRow(r);
+                    setHistoryDrawerOpen(true);
+                  }}
+                />
+              </TabsContent>
+
+              <TabsContent value="users" className="flex-1 overflow-auto mt-4">
+                <UserHistoryView
+                  rows={rows}
+                  edits={edits}
+                  onOpenAsset={(r) => {
+                    setHistoryDrawerRow(r);
+                    setHistoryDrawerOpen(true);
+                  }}
+                />
+              </TabsContent>
             </Tabs>
 
             <PrivacyFooter />
