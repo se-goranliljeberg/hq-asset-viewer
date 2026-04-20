@@ -901,6 +901,21 @@ export function AssetViewer() {
     setSkanskaFilter("all");
   }, []);
 
+  /** Restore every filter to its app-level default (used by the Reset filters button). */
+  const resetFiltersToDefaults = useCallback(() => {
+    setSearch("");
+    setModelFilter([]);
+    setUserFilter([]);
+    setManagerFilter([]);
+    setSourceFilter([]);
+    setStatusFilter(defaultStatusFilter);
+    setExceptionsOnly(false);
+    setExcludeInactive(true);
+    setSkanskaFilter("skanska");
+    setActiveCard(null);
+    toast.success("Filters reset to defaults.");
+  }, [defaultStatusFilter]);
+
   const toggleSort = useCallback((col: string) => {
     setSort((prev) => {
       if (prev.column !== col) return { column: col, dir: "asc" };
@@ -1199,6 +1214,7 @@ export function AssetViewer() {
                     const n = clearAllMappings();
                     toast.success(n > 0 ? `Forgot ${n} saved mapping(s).` : "No saved mappings to clear.");
                   }}
+                  onResetFilters={resetFiltersToDefaults}
                 />
                 <ActiveFilterChips chips={activeChips} onClearAll={clearAllFilters} />
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
