@@ -31,8 +31,19 @@ interface UserSummary {
   staleCount: number;      // rows with stale Last logon date
   exceptions: string[];    // distinct exceptions across rows
   lastLogon: string;       // most recent Last logon date string we saw
+  isLeaverWithDevice: boolean; // inactive AND owns at least one computername
   rows: AssetRow[];
 }
+
+type AuditFilterKey =
+  | null
+  | "inactive"
+  | "leaverWithDevice"
+  | "withoutComputer"
+  | "multiComputer"
+  | "nonSkanska"
+  | "withExceptions"
+  | "stale";
 
 function uniq(values: string[]): string[] {
   const seen = new Set<string>();
@@ -58,6 +69,7 @@ function maxDateString(a: string, b: string): string {
 
 export function AuditDashboard({ rows, edits }: Props) {
   const [search, setSearch] = useState("");
+  const [filterKey, setFilterKey] = useState<AuditFilterKey>(null);
   const staleThreshold = loadStaleThreshold();
 
   const users: UserSummary[] = useMemo(() => {
@@ -87,6 +99,7 @@ export function AuditDashboard({ rows, edits }: Props) {
           staleCount: 0,
           exceptions: [],
           lastLogon: "",
+          isLeaverWithDevice: false,
           rows: [],
         };
         map.set(key, entry);
@@ -101,6 +114,7 @@ export function AuditDashboard({ rows, edits }: Props) {
       entry.exceptions.push(...effectiveExceptions(r, e));
       entry.lastLogon = maxDateString(entry.lastLogon, r.raw["Last logon date"] ?? "");
       if (isInactive) entry.active = false;
+      if (isInactive && r.computername.trim()) entry.isLeaverWithDevice = true;
       if (isNonSkanska) entry.hasNonSkanska = true;
       if (stale) entry.staleCount++;
     }
@@ -119,15 +133,26 @@ export function AuditDashboard({ rows, edits }: Props) {
   }, [rows, edits, staleThreshold]);
 
   const filtered = useMemo(() => {
+    let result = users;
+    switch (filterKey) {
+      case "inactive":          result = result.filter((u) => !u.active); break;
+      case "leaverWithDevice":  result = result.filter((u) => u.isLeaverWithDevice); break;
+      case "withoutComputer":   result = result.filter((u) => u.computers.length === 0); break;
+      case "multiComputer":     result = result.filter((u) => u.computers.length > 1); break;
+      case "nonSkanska":        result = result.filter((u) => u.hasNonSkanska); break;
+      case "withExceptions":    result = result.filter((u) => u.exceptions.length > 0); break;
+      case "stale":             result = result.filter((u) => u.staleCount > 0); break;
+      case null: break;
+    }
     const q = search.trim().toLowerCase();
-    if (!q) return users;
-    return users.filter((u) =>
+    if (!q) return result;
+    return result.filter((u) =>
       u.displayName.toLowerCase().includes(q) ||
       u.computers.some((c) => c.toLowerCase().includes(q)) ||
       u.managers.some((m) => m.toLowerCase().includes(q)) ||
       u.departments.some((d) => d.toLowerCase().includes(q)),
     );
-  }, [users, search]);
+  }, [users, search, filterKey]);
 
   // KPI roll-ups (all user-centric).
   const totalUsers = users.length;
@@ -152,64 +177,74 @@ export function AuditDashboard({ rows, edits }: Props) {
     return set.size;
   }, [rows, edits]);
 
-  const kpis: { label: string; value: number; icon: typeof Users; color: string; tooltip: string }[] = [
+  const kpis: { key: AuditFilterKey; label: string; value: number; icon: typeof Users; color: string; tooltip: string }[] = [
     {
+      key: null,
       label: "Total Users",
       value: totalUsers,
       icon: Users,
       color: "text-primary",
-      tooltip: "Distinct people across all imported rows (case-insensitive). User-only and computer-only rows are merged when a username is present.",
+      tooltip: "Distinct people across all imported rows (case-insensitive). User-only and computer-only rows are merged when a username is present. Click to clear any active KPI filter.",
     },
     {
+      key: "inactive",
       label: "Inactive Users",
       value: inactiveUsers,
       icon: UserX,
       color: "text-destructive",
-      tooltip: "Users where any row has 'User Active?' set to No — likely leavers whose accounts/devices need follow-up.",
+      tooltip: "Users where any row has 'User Active?' set to No — likely leavers whose accounts/devices need follow-up. Click to filter.",
     },
     {
+      key: "leaverWithDevice",
       label: "Leavers w/ Device",
       value: leaversWithDevice,
       icon: AlertTriangle,
       color: "text-destructive",
-      tooltip: "Inactive users (User Active? = No) who still have a Computername assigned. These rows carry the new 'Assigned to inactive user' exception and should be top of the off-boarding list.",
+      tooltip: "Inactive users (User Active? = No) who still have a Computername assigned. These rows carry the 'Assigned to inactive user' exception and should be top of the off-boarding list. Click to filter.",
     },
     {
+      key: "withoutComputer",
       label: "Without Computer",
       value: usersWithoutComputer,
       icon: AlertTriangle,
       color: "text-amber-500",
-      tooltip: "Users present in the data but not associated with any Computername — typically Citrix/BYOD users or unprovisioned accounts.",
+      tooltip: "Users present in the data but not associated with any Computername — typically Citrix/BYOD users or unprovisioned accounts. Click to filter.",
     },
     {
+      key: "multiComputer",
       label: "Multi-Computer",
       value: usersWithMultipleComputers,
       icon: Monitor,
       color: "text-chart-3",
-      tooltip: "Users currently linked to more than one Computername. Useful for spotting duplicate assignments or pending hardware swaps.",
+      tooltip: "Users currently linked to more than one Computername. Useful for spotting duplicate assignments or pending hardware swaps. Click to filter.",
     },
     {
+      key: "nonSkanska",
       label: "Non-Skanska Devices",
       value: nonSkanskaUsers,
       icon: Monitor,
       color: "text-chart-4",
-      tooltip: "Users who own at least one device explicitly marked as 'Skanska computer? = No' (BYOD, consultant gear, VDI, etc.).",
+      tooltip: "Users who own at least one device explicitly marked as 'Skanska computer? = No' (BYOD, consultant gear, VDI, etc.). Click to filter.",
     },
     {
+      key: "withExceptions",
       label: "With Exceptions",
       value: usersWithExceptions,
       icon: AlertTriangle,
       color: "text-destructive",
-      tooltip: "Users whose rows carry one or more data-quality flags (Missing user, Inactive user, Assigned to inactive user, Warranty expired, etc.).",
+      tooltip: "Users whose rows carry one or more data-quality flags (Missing user, Inactive user, Assigned to inactive user, Warranty expired, etc.). Click to filter.",
     },
     {
+      key: "stale",
       label: `Stale (>${staleThreshold}d)`,
       value: staleUsers,
       icon: Clock,
       color: "text-amber-500",
-      tooltip: `Users with at least one row whose 'Last logon date' is older than ${staleThreshold} days. Threshold is configurable in the FilterBar.`,
+      tooltip: `Users with at least one row whose 'Last logon date' is older than ${staleThreshold} days. Threshold is configurable in the FilterBar. Click to filter.`,
     },
   ];
+
+  const activeKpiLabel = filterKey ? kpis.find((k) => k.key === filterKey)?.label ?? null : null;
 
   return (
     <div className="space-y-6">
@@ -218,38 +253,61 @@ export function AuditDashboard({ rows, edits }: Props) {
         <h2 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wide">
           User Roll-Up
         </h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
-          {kpis.map((k) => (
-            <Tooltip key={k.label}>
-              <TooltipTrigger asChild>
-                <Card className="cursor-help">
-                  <CardHeader className="pb-2 p-4">
-                    <CardTitle className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
-                      <k.icon className={`h-3.5 w-3.5 ${k.color}`} strokeWidth={2} />
-                      {k.label}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-4 pt-0">
-                    <p className={`text-2xl font-bold tabular-nums ${k.color}`}>
-                      {k.value.toLocaleString()}
-                    </p>
-                  </CardContent>
-                </Card>
-              </TooltipTrigger>
-              <TooltipContent className="max-w-xs text-xs leading-relaxed">
-                {k.tooltip}
-              </TooltipContent>
-            </Tooltip>
-          ))}
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
+          {kpis.map((k) => {
+            const isActive = filterKey === k.key && k.key !== null;
+            return (
+              <Tooltip key={k.label}>
+                <TooltipTrigger asChild>
+                  <Card
+                    onClick={() => {
+                      if (k.key === null) setFilterKey(null);
+                      else setFilterKey((prev) => (prev === k.key ? null : k.key));
+                    }}
+                    className={`cursor-pointer transition-all hover:shadow-md ${
+                      isActive ? "ring-2 ring-primary shadow-md" : ""
+                    }`}
+                  >
+                    <CardHeader className="pb-2 p-4">
+                      <CardTitle className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
+                        <k.icon className={`h-3.5 w-3.5 ${k.color}`} strokeWidth={2} />
+                        {k.label}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-4 pt-0">
+                      <p className={`text-2xl font-bold tabular-nums ${k.color}`}>
+                        {k.value.toLocaleString()}
+                      </p>
+                    </CardContent>
+                  </Card>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs text-xs leading-relaxed">
+                  {k.tooltip}
+                </TooltipContent>
+              </Tooltip>
+            );
+          })}
         </div>
       </section>
 
       {/* Per-user table */}
       <section>
-        <div className="flex items-center justify-between gap-3 mb-3">
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-            Per-User Detail
-          </h2>
+        <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+              Per-User Detail
+            </h2>
+            {activeKpiLabel && (
+              <Badge
+                variant="secondary"
+                className="text-xs cursor-pointer hover:bg-secondary/80"
+                onClick={() => setFilterKey(null)}
+                title="Clear KPI filter"
+              >
+                {activeKpiLabel} ✕
+              </Badge>
+            )}
+          </div>
           <div className="relative w-72">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
