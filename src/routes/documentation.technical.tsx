@@ -308,12 +308,14 @@ npm run bump:major    # major  e.g. 0.2.0 → 1.0.0`}
           <em> Comments </em> column in the format:
         </p>
         <pre className="rounded-md bg-secondary/40 border border-border p-3 text-xs mt-2">
-{`Date: YYYY-MM-DD Change: <field> from "<old>" to "<new>"`}
+{`Date: YYYY-MM-DD HH:MM [INI] Change: <field> from "<old>" to "<new>"`}
         </pre>
         <p className="mt-2">
           Multiple entries are joined with <code> | </code>. Existing comments are never
           overwritten. The Comments column is included in CSV exports, so the audit trail follows
-          the data wherever it goes.
+          the data wherever it goes. Since v0.3.0 timestamps include hours and minutes (HH:MM)
+          and a single combined entry is written when an import overwrites multiple fields on the
+          same row.
         </p>
       </Section>
 
