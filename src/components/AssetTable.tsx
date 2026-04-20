@@ -491,29 +491,53 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
 
                   // Editable raw data columns — double-click to edit
                   const val = row.raw[col] ?? "";
+                  const isLastLogon = col === "Last logon date";
+                  const days = isLastLogon ? daysSince(val) : null;
+                  const isStaleVal = isLastLogon && days !== null && days > staleThreshold;
                   const cell = (
-                    <InlineCell
+                    <div
                       key={col}
-                      value={val}
-                      width={w}
-                      col={col}
-                      rowId={row.id}
-                      onCellEdit={onCellEdit}
-                    />
+                      className={cn(
+                        "flex items-center",
+                        isStaleVal && "text-amber-600 dark:text-amber-400",
+                      )}
+                      style={{ width: w, minWidth: MIN_COL_W }}
+                    >
+                      {isStaleVal && (
+                        <AlertTriangle className="h-3 w-3 ml-2 shrink-0" strokeWidth={2} />
+                      )}
+                      <InlineCell
+                        value={val}
+                        width={isStaleVal ? Math.max(MIN_COL_W, w - 16) : w}
+                        col={col}
+                        rowId={row.id}
+                        onCellEdit={onCellEdit}
+                      />
+                    </div>
                   );
-                  if (col === "Last logon date" && val && importedAt) {
-                    const stamp = getImportedAt(importedAt, row.id, col);
+                  if (isLastLogon && val) {
+                    const stamp = importedAt ? getImportedAt(importedAt, row.id, col) : undefined;
+                    let stampLabel: string | null = null;
                     if (stamp) {
                       const d = new Date(stamp);
-                      const label = isNaN(d.getTime())
+                      stampLabel = isNaN(d.getTime())
                         ? stamp
                         : `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+                    }
+                    if (stampLabel || isStaleVal) {
                       return (
                         <Tooltip key={col}>
                           <TooltipTrigger asChild>
                             <div>{cell}</div>
                           </TooltipTrigger>
-                          <TooltipContent>Imported on {label}</TooltipContent>
+                          <TooltipContent>
+                            {stampLabel && <div>Imported on {stampLabel}</div>}
+                            {days !== null && (
+                              <div>
+                                {days} day{days === 1 ? "" : "s"} since last logon
+                              </div>
+                            )}
+                          </TooltipContent>
                         </Tooltip>
                       );
                     }
