@@ -423,6 +423,95 @@ export function AssetViewer() {
     }
   }, [data, setData, applySeedEdits, mergeAndPersistMeta]);
 
+  /** Apply user-chosen field overwrites for duplicate-username rows. */
+  const applyConflictResolutions = useCallback((resolutions: ConflictResolutions) => {
+    if (!data || !pendingParsed.current) return;
+    const incoming = pendingParsed.current;
+    const seedMap = pendingSeedEdits.current;
+    const stamps = pendingImportedAt.current;
+    const importIso = new Date().toISOString();
+
+    // Build incoming row by id (use existingRowId from conflicts).
+    const incomingByExistingId = new Map<number, { row: AssetRow; idx: number }>();
+    for (const c of pendingConflicts) {
+      incomingByExistingId.set(c.existingRow.id, { row: c.incomingRow, idx: c.incomingIdx });
+    }
+
+    const newImportedAt: ImportMeta = {};
+    const newSeedPatch: Record<string, AssetEdits> = {};
+    const auditByRow = new Map<number, string[]>();
+
+    const updatedRows = data.rows.map((r) => {
+      const fieldsToApply = resolutions.get(r.id);
+      const inc = incomingByExistingId.get(r.id);
+      if (!fieldsToApply || fieldsToApply.size === 0 || !inc) return r;
+      const newRaw = { ...r.raw };
+      const incomingSeed = seedMap[String(inc.idx)] ?? {};
+      const audit: string[] = [];
+      let nextStatus = r.computername; // unused placeholder
+      let nextSeed: AssetEdits | undefined;
+
+      for (const field of fieldsToApply) {
+        if (field === "Status") {
+          const newVal = (incomingSeed.status ?? "") as string;
+          const oldVal = "(seed)"; void oldVal;
+          nextSeed = { ...(nextSeed ?? { status: "", warrantyUntil: "" }), status: incomingSeed.status ?? "" };
+          audit.push(`Status to "${newVal || "(empty)"}"`);
+        } else if (field === "Warranty until") {
+          nextSeed = { ...(nextSeed ?? { status: "", warrantyUntil: "" }), warrantyUntil: incomingSeed.warrantyUntil ?? "" };
+          audit.push(`Warranty until to "${incomingSeed.warrantyUntil || "(empty)"}"`);
+        } else if (field === "User Active?") {
+          nextSeed = { ...(nextSeed ?? { status: "", warrantyUntil: "" }), userActive: incomingSeed.userActive ?? "" };
+          audit.push(`User Active? to "${incomingSeed.userActive || "(empty)"}"`);
+        } else if (field === "Skanska computer?") {
+          nextSeed = { ...(nextSeed ?? { status: "", warrantyUntil: "" }), skanskaComputer: incomingSeed.skanskaComputer ?? "" };
+          audit.push(`Skanska computer? to "${incomingSeed.skanskaComputer || "(empty)"}"`);
+        } else {
+          const oldVal = newRaw[field] ?? "";
+          const newVal = inc.row.raw[field] ?? "";
+          newRaw[field] = newVal;
+          audit.push(`${field} from "${oldVal || "(empty)"}" to "${newVal}"`);
+          if (!newImportedAt[r.id]) newImportedAt[r.id] = {};
+          newImportedAt[r.id][field] = importIso;
+        }
+      }
+      void nextStatus;
+      if (nextSeed) newSeedPatch[String(r.id)] = nextSeed;
+      if (audit.length > 0) auditByRow.set(r.id, audit);
+
+      // Sync mirror props
+      const cn = (newRaw["Computername"] ?? r.computername).trim();
+      const md = (newRaw["Modell"] ?? r.modell).trim();
+      const us = (newRaw["Username"] ?? r.user).trim();
+      return { ...r, raw: newRaw, computername: cn, modell: md, user: us };
+    });
+
+    setData({ ...data, rows: updatedRows });
+
+    // Append audit comments + merge seed patches
+    if (auditByRow.size > 0 || Object.keys(newSeedPatch).length > 0) {
+      setEditsState((prev) => {
+        const next = { ...prev };
+        for (const [rowId, msgs] of auditByRow.entries()) {
+          const key = getEditKey(rowId);
+          const cur = next[key] ?? { status: "", warrantyUntil: "" };
+          const merged = { ...cur, ...(newSeedPatch[String(rowId)] ?? {}) };
+          merged.comment = appendComment(cur.comment, `Imported update: ${msgs.join(", ")}`);
+          next[key] = merged;
+        }
+        // Apply seed patches that had no audit (shouldn't happen, but be safe).
+        for (const [k, patch] of Object.entries(newSeedPatch)) {
+          if (!auditByRow.has(Number(k))) {
+            next[k] = { ...(next[k] ?? { status: "", warrantyUntil: "" }), ...patch };
+          }
+        }
+        saveEdits(next);
+        return next;
+      });
+    }
+    if (Object.keys(newImportedAt).length > 0) mergeAndPersistMeta(newImportedAt);
+  }, [data, setData, mergeAndPersistMeta, pendingConflicts]);
+
   const handleImportEnrich = useCallback(() => {
     setImportModeOpen(false);
     if (pendingParsed.current && data) {
