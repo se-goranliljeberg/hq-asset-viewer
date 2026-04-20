@@ -43,6 +43,7 @@ import { ColumnMappingDialog } from "./ColumnMappingDialog";
 import { InitialsPromptDialog } from "./InitialsPromptDialog";
 import { WhatsNewToast } from "./WhatsNewToast";
 import { APP_VERSION, useHasUnseenVersion } from "@/lib/version-state";
+import { loadImportMeta, saveImportMeta, mergeImportMeta, type ImportMeta } from "@/lib/import-meta";
 
 import { toast } from "sonner";
 
@@ -91,6 +92,17 @@ export function AssetViewer() {
   const [data, setData, hydrated, setDataDirect] = useStickyState();
   const hasUnseenVersion = useHasUnseenVersion();
   const [edits, setEditsState] = useState<Record<string, AssetEdits>>({});
+  const [importMeta, setImportMeta] = useState<ImportMeta>({});
+
+  useEffect(() => { setImportMeta(loadImportMeta()); }, []);
+
+  const mergeAndPersistMeta = useCallback((incoming: ImportMeta) => {
+    setImportMeta((prev) => {
+      const next = mergeImportMeta(prev, incoming);
+      saveImportMeta(next);
+      return next;
+    });
+  }, []);
   const defaultStatusFilter = useMemo(
     () => [STATUS_NONE_TOKEN, ...STATUS_OPTIONS].filter((s) => s !== "Sent back to broker"),
     [],
@@ -125,6 +137,7 @@ export function AssetViewer() {
   const pendingSheet = useRef("");
   const pendingParsed = useRef<AssetData | null>(null);
   const pendingSeedEdits = useRef<Record<string, AssetEdits>>({});
+  const pendingImportedAt = useRef<Record<number, Record<string, string>>>({});
 
   // Mapping dialog state
   const [mappingOpen, setMappingOpen] = useState(false);
@@ -334,18 +347,39 @@ export function AssetViewer() {
     }
   }, []);
 
+  const remapImportedAt = useCallback(
+    (rowsCount: number, idMapper: (origIdx: number) => number | null): ImportMeta => {
+      const out: ImportMeta = {};
+      const src = pendingImportedAt.current;
+      for (let i = 0; i < rowsCount; i++) {
+        const stamps = src[i];
+        if (!stamps) continue;
+        const newId = idMapper(i);
+        if (newId === null) continue;
+        out[newId] = { ...stamps };
+      }
+      return out;
+    },
+    [],
+  );
+
   const applyParsed = useCallback((result: ParseResult) => {
     if (data) {
       pendingParsed.current = result.data;
       pendingSeedEdits.current = result.seedEdits;
+      pendingImportedAt.current = result.importedAt;
       setPendingIsUsersFile(result.isUsersFile);
       setImportModeOpen(true);
     } else {
       setData(result.data);
       applySeedEdits(result.seedEdits);
+      // Fresh load: row ids === original idx in parse result.
+      const meta: ImportMeta = {};
+      for (const [k, v] of Object.entries(result.importedAt)) meta[Number(k)] = { ...v };
+      mergeAndPersistMeta(meta);
       toast.success(`Loaded ${result.data.rows.length} rows from "${result.data.filename}"`);
     }
-  }, [data, setData, applySeedEdits]);
+  }, [data, setData, applySeedEdits, mergeAndPersistMeta]);
 
   const handleImportEnrich = useCallback(() => {
     setImportModeOpen(false);
@@ -366,37 +400,52 @@ export function AssetViewer() {
         if (e) byEmailExisting.set(e, r.id);
       }
       const remappedSeed: Record<string, AssetEdits> = {};
+      const idMap = new Map<number, number>();
       let unmatchedCounter = 0;
       incoming.rows.forEach((row, i) => {
-        const seed = pendingSeedEdits.current[String(i)];
-        if (!seed) return;
         const u = row.user.toLowerCase();
         const e = (row.raw["Email"] ?? "").toLowerCase();
-        const matchId = (u && byUserExisting.get(u)) ?? (e && byEmailExisting.get(e)) ?? null;
+        const matchId: number | null =
+          (u ? byUserExisting.get(u) : undefined) ??
+          (e ? byEmailExisting.get(e) : undefined) ??
+          null;
+        let assignedId: number;
         if (matchId !== null && !matchedUserKeys.has(String(matchId))) {
           matchedUserKeys.add(String(matchId));
-          remappedSeed[String(matchId)] = seed;
+          assignedId = matchId;
         } else {
-          remappedSeed[String(maxExistingId + 1 + unmatchedCounter)] = seed;
+          assignedId = maxExistingId + 1 + unmatchedCounter;
           unmatchedCounter++;
         }
+        idMap.set(i, assignedId);
+        const seed = pendingSeedEdits.current[String(i)];
+        if (seed) remappedSeed[String(assignedId)] = seed;
       });
       applySeedEdits(remappedSeed);
+      mergeAndPersistMeta(remapImportedAt(incoming.rows.length, (i) => idMap.get(i) ?? null));
       toast.success(`Enriched users — total rows: ${merged.rows.length}`);
       pendingParsed.current = null;
       pendingSeedEdits.current = {};
+      pendingImportedAt.current = {};
       setPendingIsUsersFile(false);
     }
-  }, [data, setData, applySeedEdits]);
+  }, [data, setData, applySeedEdits, mergeAndPersistMeta, remapImportedAt]);
 
   const handleImportReplace = useCallback(() => {
     setImportModeOpen(false);
     if (pendingParsed.current) {
       setData(pendingParsed.current);
       applySeedEdits(pendingSeedEdits.current);
+      // Replace: row ids === original idx
+      const meta: ImportMeta = {};
+      for (const [k, v] of Object.entries(pendingImportedAt.current)) meta[Number(k)] = { ...v };
+      // Replace clobbers prior data, so reset rather than merge.
+      saveImportMeta(meta);
+      setImportMeta(meta);
       toast.success(`Replaced with ${pendingParsed.current.rows.length} rows`);
       pendingParsed.current = null;
       pendingSeedEdits.current = {};
+      pendingImportedAt.current = {};
     }
   }, [setData, applySeedEdits]);
 
@@ -416,11 +465,13 @@ export function AssetViewer() {
         }
       }
       applySeedEdits(remappedSeed);
+      mergeAndPersistMeta(remapImportedAt(incoming.rows.length, (i) => maxExistingId + 1 + i));
       toast.success(`Added ${incoming.rows.length} rows (total: ${merged.rows.length})`);
       pendingParsed.current = null;
       pendingSeedEdits.current = {};
+      pendingImportedAt.current = {};
     }
-  }, [data, setData, applySeedEdits]);
+  }, [data, setData, applySeedEdits, mergeAndPersistMeta, remapImportedAt]);
 
 
   const handleAddRow = useCallback((raw: Record<string, string>, status: AssetStatus, warrantyUntil: string) => {
@@ -877,6 +928,7 @@ export function AssetViewer() {
                   onUndoLast={handleUndoLast}
                   selectedIds={selectedIds}
                   onSelectionChange={setSelectedIds}
+                  importedAt={importMeta}
                 />
               </TabsContent>
 

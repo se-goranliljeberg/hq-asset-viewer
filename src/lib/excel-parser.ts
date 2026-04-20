@@ -16,12 +16,14 @@ export const CANONICAL_FIELDS = [
   "Computername",
   "Modell",
   "Last account activity",
+  "Last logon date",
   "Status",
   "Warranty until",
   "AD Create.Date",
   "Company",
   "Email",
   "Department",
+  "Manager",
 ] as const;
 
 export type CanonicalField = (typeof CANONICAL_FIELDS)[number];
@@ -36,13 +38,17 @@ const ALIASES: Record<CanonicalField, string[]> = {
   Name: ["name", "displayname", "display name", "full name", "fullname"],
   Computername: ["computername", "computer name", "hostname", "host"],
   Modell: ["modell", "model", "devicemodel", "device model"],
-  "Last account activity": ["last account activity", "lastlogon", "last logon", "lastlogondate", "last logon date"],
+  // Narrowed: "last logon" aliases now belong to "Last logon date" so the obvious
+  // header maps to the new column. "Last account activity" still catches AD-style headers.
+  "Last account activity": ["last account activity", "account activity", "last activity"],
+  "Last logon date": ["last logon date", "lastlogondate", "last logon", "lastlogon", "last sign-in", "lastsignin", "last signin"],
   Status: ["status"],
   "Warranty until": ["warranty until", "warranty", "warrantydate", "warranty date"],
   "AD Create.Date": ["ad create.date", "creation date", "createdate", "whencreated", "creationdate", "created on", "created", "create date"],
   Company: ["company", "organization", "org"],
   Email: ["email", "mail", "e-mail", "userprincipalname", "upn", "email address"],
   Department: ["department", "dept", "avdelning"],
+  Manager: ["manager", "reports to", "chef", "linemanager", "line manager", "supervisor"],
 };
 
 // Substring patterns for fuzzy matches (when alias miss).
@@ -51,13 +57,15 @@ const FUZZY_SUBSTRINGS: Record<CanonicalField, string[]> = {
   Name: ["display name", "displayname", "full name"],
   Computername: ["computer name", "hostname"],
   Modell: ["model"],
-  "Last account activity": ["last logon", "lastlogon", "last activity"],
+  "Last account activity": ["last activity", "account activity"],
+  "Last logon date": ["last logon", "lastlogon", "sign-in", "signin"],
   Status: [],
   "Warranty until": ["warranty"],
   "AD Create.Date": ["create date", "createdate", "whencreated", "creation"],
   Company: ["company", "organization"],
   Email: ["email", "mail", "upn"],
   Department: ["department", "dept"],
+  Manager: ["manager", "supervisor"],
 };
 
 export interface MappingDetection {
@@ -228,6 +236,8 @@ export interface ParseResult {
   data: AssetData;
   seedEdits: Record<string, AssetEdits>;
   isUsersFile: boolean;
+  /** Per-row, per-field ISO timestamps recording when this value was imported. */
+  importedAt: Record<number, Record<string, string>>;
 }
 
 export function parseSheetWithMapping(
@@ -245,6 +255,7 @@ export function parseSheetWithMapping(
       data: { rows: [], columns: [], filename, loadedAt: new Date().toISOString() },
       seedEdits: {},
       isUsersFile: false,
+      importedAt: {},
     };
   }
 
@@ -265,6 +276,7 @@ export function parseSheetWithMapping(
   const dateFields: ReadonlySet<CanonicalField> = new Set<CanonicalField>([
     "AD Create.Date",
     "Last account activity",
+    "Last logon date",
   ]);
 
   // Detect users-only file: no Computername mapped, OR all rows empty in it.
@@ -290,6 +302,8 @@ export function parseSheetWithMapping(
   }
 
   const seedEdits: Record<string, AssetEdits> = {};
+  const importedAt: Record<number, Record<string, string>> = {};
+  const importIso = new Date().toISOString();
   // Final columns: only canonical ones that are mapped. We always include the
   // mapped fields in canonical order (for stability across files).
   const finalCols: CanonicalField[] = CANONICAL_FIELDS.filter((f) => !!fieldToHeader[f]);
@@ -320,6 +334,7 @@ export function parseSheetWithMapping(
 
     // Build raw using ONLY canonical columns
     const raw: Record<string, string> = {};
+    const rowStamps: Record<string, string> = {};
     for (const field of finalCols) {
       const src = fieldToHeader[field]!;
       const cellValue = row[src];
@@ -332,9 +347,12 @@ export function parseSheetWithMapping(
         str = String(cellValue ?? "").trim();
       }
       raw[field] = str;
+      if (str) rowStamps[field] = importIso;
     }
     // Ensure derived user fallback shows in Username column too
     if (!raw["Username"] && user) raw["Username"] = user;
+
+    if (Object.keys(rowStamps).length > 0) importedAt[idx] = rowStamps;
 
     // Seed edits from imported Status / Warranty until columns
     const statusVal = statusHeader ? String(row[statusHeader] ?? "").trim() : "";
@@ -351,6 +369,7 @@ export function parseSheetWithMapping(
     data: { rows, columns: finalCols as string[], filename, loadedAt: new Date().toISOString() },
     seedEdits,
     isUsersFile,
+    importedAt,
   };
 }
 
@@ -423,8 +442,8 @@ export function enrichWithUsers(existing: AssetData, incoming: AssetData): Asset
         const val = incoming_row.raw[col] ?? "";
         if (val && !target.raw[col]) target.raw[col] = val;
       }
-      // Also enrich Name / Company if available
-      for (const col of ["Name", "Company"] as CanonicalField[]) {
+      // Also enrich Name / Company / Manager / Last logon date if available
+      for (const col of ["Name", "Company", "Manager", "Last logon date"] as CanonicalField[]) {
         const val = incoming_row.raw[col] ?? "";
         if (val && !target.raw[col]) target.raw[col] = val;
       }
