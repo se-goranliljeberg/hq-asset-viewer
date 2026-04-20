@@ -16,12 +16,14 @@ export const CANONICAL_FIELDS = [
   "Computername",
   "Modell",
   "Last account activity",
+  "Last logon date",
   "Status",
   "Warranty until",
   "AD Create.Date",
   "Company",
   "Email",
   "Department",
+  "Manager",
 ] as const;
 
 export type CanonicalField = (typeof CANONICAL_FIELDS)[number];
@@ -36,13 +38,17 @@ const ALIASES: Record<CanonicalField, string[]> = {
   Name: ["name", "displayname", "display name", "full name", "fullname"],
   Computername: ["computername", "computer name", "hostname", "host"],
   Modell: ["modell", "model", "devicemodel", "device model"],
-  "Last account activity": ["last account activity", "lastlogon", "last logon", "lastlogondate", "last logon date"],
+  // Narrowed: "last logon" aliases now belong to "Last logon date" so the obvious
+  // header maps to the new column. "Last account activity" still catches AD-style headers.
+  "Last account activity": ["last account activity", "account activity", "last activity"],
+  "Last logon date": ["last logon date", "lastlogondate", "last logon", "lastlogon", "last sign-in", "lastsignin", "last signin"],
   Status: ["status"],
   "Warranty until": ["warranty until", "warranty", "warrantydate", "warranty date"],
   "AD Create.Date": ["ad create.date", "creation date", "createdate", "whencreated", "creationdate", "created on", "created", "create date"],
   Company: ["company", "organization", "org"],
   Email: ["email", "mail", "e-mail", "userprincipalname", "upn", "email address"],
   Department: ["department", "dept", "avdelning"],
+  Manager: ["manager", "reports to", "chef", "linemanager", "line manager", "supervisor"],
 };
 
 // Substring patterns for fuzzy matches (when alias miss).
@@ -51,13 +57,15 @@ const FUZZY_SUBSTRINGS: Record<CanonicalField, string[]> = {
   Name: ["display name", "displayname", "full name"],
   Computername: ["computer name", "hostname"],
   Modell: ["model"],
-  "Last account activity": ["last logon", "lastlogon", "last activity"],
+  "Last account activity": ["last activity", "account activity"],
+  "Last logon date": ["last logon", "lastlogon", "sign-in", "signin"],
   Status: [],
   "Warranty until": ["warranty"],
   "AD Create.Date": ["create date", "createdate", "whencreated", "creation"],
   Company: ["company", "organization"],
   Email: ["email", "mail", "upn"],
   Department: ["department", "dept"],
+  Manager: ["manager", "supervisor"],
 };
 
 export interface MappingDetection {
