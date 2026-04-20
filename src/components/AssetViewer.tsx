@@ -132,12 +132,12 @@ export function AssetViewer() {
     } catch { return false; }
   });
   const [skanskaFilter, setSkanskaFilter] = useState<SkanskaFilter>(() => {
-    if (typeof window === "undefined") return "skanska";
+    if (typeof window === "undefined") return "all";
     try {
       const raw = localStorage.getItem(FILTER_STORAGE_KEYS.skanska);
       if (raw === "all" || raw === "skanska" || raw === "non-skanska") return raw;
     } catch { /* noop */ }
-    return "skanska";
+    return "all";
   });
   const [staleThreshold, setStaleThresholdState] = useState<number>(() => loadStaleThreshold());
 
@@ -883,8 +883,7 @@ export function AssetViewer() {
     setStatusFilter(defaultStatusFilter);
     setExceptionsOnly(false);
     setExcludeInactive(false);
-    setSkanskaFilter("skanska");
-    setSort({ column: "", dir: null });
+    setSkanskaFilter("all");
     setConfirmClear(false);
     toast.success("Local data cleared.");
   }, [setData, defaultStatusFilter]);
@@ -911,8 +910,7 @@ export function AssetViewer() {
     setStatusFilter(defaultStatusFilter);
     setExceptionsOnly(false);
     setExcludeInactive(false);
-    setSkanskaFilter("skanska");
-    setActiveCard(null);
+    setSkanskaFilter("all");
     toast.success("Filters reset to defaults.");
   }, [defaultStatusFilter]);
 
