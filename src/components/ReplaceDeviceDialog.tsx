@@ -22,7 +22,7 @@ export type ReplaceSource =
   | { kind: "new"; computername: string; modell: string; warrantyUntil: string }
   | { kind: "stock"; sourceRowId: number };
 
-export type OldDeviceDestination = "In stock" | "Sent back to broker";
+export type OldDeviceDestination = "In stock" | "Sent back to broker" | "User keeps old device";
 
 interface Props {
   open: boolean;
@@ -245,8 +245,16 @@ export function ReplaceDeviceDialog({
               <SelectContent>
                 <SelectItem value="In stock">In stock</SelectItem>
                 <SelectItem value="Sent back to broker">Sent back to broker</SelectItem>
+                <SelectItem value="User keeps old device">User keeps old device (handover)</SelectItem>
               </SelectContent>
             </Select>
+            {oldDestination === "User keeps old device" && (
+              <p className="text-xs text-muted-foreground mt-1">
+                The user will keep both devices for a handover period. The old computer
+                stays assigned to <strong>{row.user || "(no user)"}</strong> with status
+                "Deployed at user", so they can move data and finish setup before returning it.
+              </p>
+            )}
           </div>
         )}
 

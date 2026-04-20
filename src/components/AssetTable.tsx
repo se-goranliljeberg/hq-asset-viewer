@@ -38,6 +38,10 @@ interface Props {
   onSelectionChange: (ids: Set<number>) => void;
   importedAt?: ImportMeta;
   staleThreshold: number;
+  /** Open the user-history drawer for this username. */
+  onOpenUser?: (user: string) => void;
+  /** Open the asset-history drawer for this row. */
+  onOpenAsset?: (row: AssetRow) => void;
 }
 
 const MIN_COL_W = 80;
@@ -144,7 +148,7 @@ function InlineCell({ value, width, col, rowId, onCellEdit }: {
   );
 }
 
-export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellEdit, onUndoLast, selectedIds, onSelectionChange, importedAt, staleThreshold }: Props) {
+export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellEdit, onUndoLast, selectedIds, onSelectionChange, importedAt, staleThreshold, onOpenUser, onOpenAsset }: Props) {
   const parentRef = useRef<HTMLDivElement>(null);
 
   // Persisted column order
@@ -485,6 +489,54 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                           <span className="text-destructive text-xs font-medium">{val}</span>
                         ) : (
                           val
+                        )}
+                      </div>
+                    );
+                  }
+
+                  // Clickable Username / Computername — open the relevant drawer.
+                  if (col === "Username" && onOpenUser) {
+                    const val = row.user || row.raw[col] || "";
+                    return (
+                      <div
+                        key={col}
+                        className="px-1 py-0.5 flex items-center"
+                        style={{ width: w, minWidth: MIN_COL_W }}
+                      >
+                        {val ? (
+                          <button
+                            type="button"
+                            onClick={() => onOpenUser(val)}
+                            className="truncate text-left text-primary hover:underline px-2 py-1 rounded-sm hover:bg-primary/10 transition-colors w-full"
+                            title={`View user history: ${val}`}
+                          >
+                            {val}
+                          </button>
+                        ) : (
+                          <span className="px-3 py-1.5 text-muted-foreground italic text-xs">—</span>
+                        )}
+                      </div>
+                    );
+                  }
+                  if (col === "Computername" && onOpenAsset) {
+                    const val = row.computername || row.raw[col] || "";
+                    return (
+                      <div
+                        key={col}
+                        className="px-1 py-0.5 flex items-center"
+                        style={{ width: w, minWidth: MIN_COL_W }}
+                      >
+                        {val ? (
+                          <button
+                            type="button"
+                            onClick={() => onOpenAsset(row)}
+                            className="truncate text-left text-primary hover:underline px-2 py-1 rounded-sm hover:bg-primary/10 transition-colors w-full"
+                            title={`View asset history: ${val}`}
+                          >
+                            {val}
+                          </button>
+                        ) : (
+                          <span className="px-3 py-1.5 text-muted-foreground italic text-xs">—</span>
                         )}
                       </div>
                     );

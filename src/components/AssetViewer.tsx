@@ -47,6 +47,8 @@ import { WhatsNewToast } from "./WhatsNewToast";
 import { MultiAssetImportDialog, type MultiAssetResolution } from "./MultiAssetImportDialog";
 import { AssetHistoryDrawer } from "./AssetHistoryDrawer";
 import { UserHistoryDrawer } from "./UserHistoryDrawer";
+import { AssetManagementView } from "./AssetManagementView";
+import { UserHistoryView } from "./UserHistoryView";
 import { APP_VERSION, useHasUnseenVersion } from "@/lib/version-state";
 import { loadImportMeta, saveImportMeta, mergeImportMeta, type ImportMeta } from "@/lib/import-meta";
 import { ImportConflictDialog, type ConflictResolutions } from "./ImportConflictDialog";
@@ -892,7 +894,9 @@ export function AssetViewer() {
         const oldHistory = target.history ?? [];
         const oldPrevUsers = target.previousUsers ?? [];
         const nowIso = new Date().toISOString();
-        const oldStatus: LifecycleState = oldDestination;
+        // "User keeps old device" = handover: spun-off row stays Deployed at user.
+        const userKeepsOld = oldDestination === "User keeps old device";
+        const oldStatus: LifecycleState = userKeepsOld ? "Deployed at user" : oldDestination;
 
         let updatedRows = data.rows;
 
@@ -905,8 +909,8 @@ export function AssetViewer() {
             id: spinoffId,
             computername: oldComputername,
             modell: oldModell,
-            user: "",
-            raw: { ...target.raw, Username: "" },
+            user: userKeepsOld ? oldUser : "",
+            raw: { ...target.raw, Username: userKeepsOld ? oldUser : "" },
             exceptions: [],
             sourceFile: target.sourceFile,
             assetKind: "computer",
@@ -916,10 +920,15 @@ export function AssetViewer() {
           spinoffRow = recordLifecycleEvent(spinoffRow, {
             from: "Deployed at user",
             to: oldStatus,
-            prevUser: oldUser,
-            note: source.kind === "new"
-              ? `Replaced with new device ${source.computername}`
-              : `Replaced with in-stock device`,
+            user: userKeepsOld ? oldUser : undefined,
+            prevUser: userKeepsOld ? undefined : oldUser,
+            note: userKeepsOld
+              ? `Handover period — user keeps old device alongside ${
+                  source.kind === "new" ? source.computername : "in-stock replacement"
+                }`
+              : source.kind === "new"
+                ? `Replaced with new device ${source.computername}`
+                : `Replaced with in-stock device`,
             at: nowIso,
           });
           updatedRows = [...updatedRows, spinoffRow];
@@ -1008,7 +1017,9 @@ export function AssetViewer() {
               status: oldStatus,
               comment: appendComment(
                 originalEditsBefore.comment,
-                `Device returned: user "${oldUser || "(none)"}" unassigned, status → "${oldStatus}"`,
+                userKeepsOld
+                  ? `Handover: user "${oldUser || "(none)"}" keeps old device temporarily alongside the replacement`
+                  : `Device returned: user "${oldUser || "(none)"}" unassigned, status → "${oldStatus}"`,
               ),
             };
           }
@@ -1432,6 +1443,8 @@ export function AssetViewer() {
               <TabsList className="w-fit">
                 <TabsTrigger value="table">Asset List</TabsTrigger>
                 <TabsTrigger value="audit">Audit Report</TabsTrigger>
+                <TabsTrigger value="management">Asset Management</TabsTrigger>
+                <TabsTrigger value="users">User History</TabsTrigger>
               </TabsList>
 
               <TabsContent value="table" className="flex flex-1 flex-col gap-4 overflow-hidden mt-4">
@@ -1555,6 +1568,15 @@ export function AssetViewer() {
                   onSelectionChange={setSelectedIds}
                   importedAt={importMeta}
                   staleThreshold={staleThreshold}
+                  onOpenUser={(u) => {
+                    setUserDrawerKey(u.trim().toLowerCase());
+                    setUserDrawerDisplay(u);
+                    setUserDrawerOpen(true);
+                  }}
+                  onOpenAsset={(r) => {
+                    setHistoryDrawerRow(r);
+                    setHistoryDrawerOpen(true);
+                  }}
                 />
               </TabsContent>
 
@@ -1566,6 +1588,33 @@ export function AssetViewer() {
                     setUserDrawerKey(key);
                     setUserDrawerDisplay(display);
                     setUserDrawerOpen(true);
+                  }}
+                />
+              </TabsContent>
+
+              <TabsContent value="management" className="flex-1 overflow-auto mt-4">
+                <AssetManagementView
+                  rows={rows}
+                  edits={edits}
+                  onOpenUser={(u) => {
+                    setUserDrawerKey(u.trim().toLowerCase());
+                    setUserDrawerDisplay(u);
+                    setUserDrawerOpen(true);
+                  }}
+                  onOpenAsset={(r) => {
+                    setHistoryDrawerRow(r);
+                    setHistoryDrawerOpen(true);
+                  }}
+                />
+              </TabsContent>
+
+              <TabsContent value="users" className="flex-1 overflow-auto mt-4">
+                <UserHistoryView
+                  rows={rows}
+                  edits={edits}
+                  onOpenAsset={(r) => {
+                    setHistoryDrawerRow(r);
+                    setHistoryDrawerOpen(true);
                   }}
                 />
               </TabsContent>
