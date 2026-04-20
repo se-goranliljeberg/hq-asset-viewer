@@ -300,6 +300,108 @@ export function AssetViewer() {
     });
   }, []);
 
+  /**
+   * Split a row when its Status is moved to "In stock" or "Sent back to broker":
+   * keep the user on the original row (clearing computername / modell / warranty)
+   * and spin the computer off into a new row at the chosen lifecycle status.
+   * Records lifecycle events on both rows.
+   */
+  const handleStatusReturnSplit = useCallback(
+    (rowId: number, newStatus: "In stock" | "Sent back to broker") => {
+      if (!data) return;
+      const target = data.rows.find((r) => r.id === rowId);
+      if (!target) return;
+      const oldUser = target.user;
+      const oldComputername = target.computername;
+      const oldModell = target.modell;
+      const oldHistory = target.history ?? [];
+      const oldPrevUsers = target.previousUsers ?? [];
+      const nowIso = new Date().toISOString();
+
+      // Spin off the device into its own row.
+      const spinoffId = Math.max(...data.rows.map((r) => r.id), 0) + 1;
+      let spinoffRow: AssetRow = {
+        id: spinoffId,
+        computername: oldComputername,
+        modell: oldModell,
+        user: "",
+        raw: { ...target.raw, Username: "" },
+        exceptions: [],
+        sourceFile: target.sourceFile,
+        assetKind: "computer",
+        history: oldHistory,
+        previousUsers: oldPrevUsers,
+      };
+      spinoffRow = recordLifecycleEvent(spinoffRow, {
+        from: "Deployed at user",
+        to: newStatus,
+        prevUser: oldUser,
+        note: `Returned via Status change → "${newStatus}"`,
+        at: nowIso,
+      });
+
+      // Clear the device data from the original row but keep the user.
+      const updatedRows = data.rows
+        .map((r) =>
+          r.id === rowId
+            ? {
+                ...r,
+                computername: "",
+                modell: "",
+                raw: {
+                  ...r.raw,
+                  Computername: "",
+                  Modell: "",
+                },
+                exceptions: [],
+                assetKind: "user-only" as const,
+                history: [],
+                previousUsers: [],
+              }
+            : r,
+        )
+        .concat(spinoffRow);
+
+      setData({ ...data, rows: updatedRows });
+
+      setEditsState((prev) => {
+        const next = { ...prev };
+        const originalKey = getEditKey(rowId);
+        const originalEditsBefore = next[originalKey] ?? { status: "", warrantyUntil: "" };
+
+        // Spin-off inherits the original row's prior edits + new status.
+        const spinoffKey = getEditKey(spinoffId);
+        next[spinoffKey] = {
+          ...originalEditsBefore,
+          status: newStatus,
+          comment: appendComment(
+            originalEditsBefore.comment,
+            `Device returned: user "${oldUser || "(none)"}" unassigned, status → "${newStatus}"`,
+          ),
+        };
+
+        // Original row keeps the user but loses the device + warranty + status.
+        next[originalKey] = {
+          ...originalEditsBefore,
+          status: "",
+          warrantyUntil: "",
+          comment: appendComment(
+            originalEditsBefore.comment,
+            `Device "${oldComputername}" returned to ${newStatus}; user retained without device`,
+          ),
+        };
+
+        saveEdits(next);
+        return next;
+      });
+
+      toast.success(
+        `"${oldComputername}" → ${newStatus}; "${oldUser}" kept without device`,
+      );
+    },
+    [data, setData],
+  );
+
   const handleEdit = useCallback((rowId: number, field: keyof AssetEdits, value: string) => {
     if (field === "comment") {
       performEdit(rowId, field, value);
