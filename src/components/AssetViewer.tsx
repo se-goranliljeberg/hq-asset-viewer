@@ -858,8 +858,11 @@ export function AssetViewer() {
     setModelFilter([]);
     setUserFilter([]);
     setSourceFilter([]);
+    setManagerFilter([]);
     setStatusFilter(defaultStatusFilter);
     setExceptionsOnly(false);
+    setExcludeInactive(true);
+    setSkanskaFilter("skanska");
     setSort({ column: "", dir: null });
     setConfirmClear(false);
     toast.success("Local data cleared.");
@@ -869,9 +872,12 @@ export function AssetViewer() {
     setSearch("");
     setModelFilter([]);
     setUserFilter([]);
+    setManagerFilter([]);
     setSourceFilter([]);
     setStatusFilter([]);
     setExceptionsOnly(false);
+    setExcludeInactive(false);
+    setSkanskaFilter("all");
   }, []);
 
   const toggleSort = useCallback((col: string) => {
@@ -898,6 +904,12 @@ export function AssetViewer() {
     [rows],
   );
 
+  const managers = useMemo(
+    () => [...new Set(rows.map((r) => (r.raw["Manager"] ?? "").trim()).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" })),
+    [rows],
+  );
+
   const hasManualOrEdits = useMemo(() => {
     const hasEditsVal = Object.values(edits).some((e) => e.status !== "" || e.warrantyUntil !== "");
     const hasManual = rows.some((r) => r.sourceFile === "Manual entry");
@@ -909,9 +921,30 @@ export function AssetViewer() {
     if (activeCard === "exceptions") result = result.filter((r) => r.exceptions.length > 0);
     else if (activeCard === "users") result = result.filter((r) => r.user !== "");
     else if (activeCard === "models") result = result.filter((r) => r.modell !== "");
+    else if (activeCard === "stale") {
+      result = result.filter((r) => {
+        const v = r.raw["Last logon date"] ?? "";
+        if (!v) return false;
+        const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
+        if (!m) return false;
+        const then = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+        return Math.floor((Date.now() - then) / 86_400_000) > staleThreshold;
+      });
+    }
     if (exceptionsOnly && activeCard !== "exceptions") result = result.filter((r) => r.exceptions.length > 0);
+    if (excludeInactive) {
+      result = result.filter((r) => effectiveUserActive(edits[getEditKey(r.id)]) !== "no");
+    }
+    if (skanskaFilter !== "all") {
+      result = result.filter((r) => {
+        const eff = effectiveSkanska(edits[getEditKey(r.id)], r.computername);
+        if (skanskaFilter === "skanska") return eff === "yes" || eff === "";
+        return eff === "no";
+      });
+    }
     if (modelFilter.length > 0) result = result.filter((r) => modelFilter.includes(r.modell));
     if (userFilter.length > 0) result = result.filter((r) => userFilter.includes(r.user));
+    if (managerFilter.length > 0) result = result.filter((r) => managerFilter.includes((r.raw["Manager"] ?? "").trim()));
     if (sourceFilter.length > 0) result = result.filter((r) => sourceFilter.includes(r.sourceFile));
     if (statusFilter.length > 0) {
       result = result.filter((r) => {
