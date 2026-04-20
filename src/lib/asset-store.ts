@@ -6,6 +6,7 @@ const COL_ORDER_KEY = "hq_asset_column_order";
 const COL_WIDTHS_KEY = "hq_asset_column_widths";
 const MAPPING_PREFIX = "hq_mapping_";
 const MIGRATION_KEY = "hq_canonical_migrated_v1";
+const LIFECYCLE_MIGRATION_KEY = "hq_lifecycle_migrated_v1";
 
 export function saveData(data: AssetData): boolean {
   try {
@@ -112,6 +113,19 @@ export function isMigrated(): boolean {
 export function markMigrated(): void {
   try {
     localStorage.setItem(MIGRATION_KEY, "1");
+  } catch {
+    /* ignore */
+  }
+}
+
+// ---------- Lifecycle migration flag ----------
+
+export function isLifecycleMigrated(): boolean {
+  return localStorage.getItem(LIFECYCLE_MIGRATION_KEY) === "1";
+}
+export function markLifecycleMigrated(): void {
+  try {
+    localStorage.setItem(LIFECYCLE_MIGRATION_KEY, "1");
   } catch {
     /* ignore */
   }
