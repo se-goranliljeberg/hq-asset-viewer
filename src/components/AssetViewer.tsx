@@ -516,6 +516,27 @@ export function AssetViewer() {
     setImportModeOpen(false);
     if (pendingParsed.current && data) {
       const incoming = pendingParsed.current;
+      // Detect username conflicts first.
+      const { conflicts, nonConflicting } = detectUsernameConflicts(
+        data, incoming, pendingSeedEdits.current, edits,
+      );
+      if (conflicts.length > 0) {
+        pendingParsed.current = { ...incoming, rows: nonConflicting.map((n) => n.row) };
+        const newSeed: Record<string, AssetEdits> = {};
+        const newStamps: Record<number, Record<string, string>> = {};
+        nonConflicting.forEach((n, newIdx) => {
+          const oldSeed = pendingSeedEdits.current[String(n.incomingIdx)];
+          if (oldSeed) newSeed[String(newIdx)] = oldSeed;
+          const oldStamps = pendingImportedAt.current[n.incomingIdx];
+          if (oldStamps) newStamps[newIdx] = oldStamps;
+        });
+        pendingSeedEdits.current = newSeed;
+        pendingImportedAt.current = newStamps;
+        setPendingConflicts(conflicts);
+        pendingMode.current = "enrich";
+        setConflictOpen(true);
+        return;
+      }
       const merged = enrichWithUsers(data, incoming);
       setData(merged);
       // Enrich keeps existing row ids; only unmatched incoming rows are appended
@@ -560,7 +581,7 @@ export function AssetViewer() {
       pendingImportedAt.current = {};
       setPendingIsUsersFile(false);
     }
-  }, [data, setData, applySeedEdits, mergeAndPersistMeta, remapImportedAt]);
+  }, [data, edits, setData, applySeedEdits, mergeAndPersistMeta, remapImportedAt]);
 
   const handleImportReplace = useCallback(() => {
     setImportModeOpen(false);
@@ -1381,6 +1402,13 @@ export function AssetViewer() {
           initialMapping={mappingInitial}
           onApply={handleMappingApply}
           onCancel={handleMappingCancel}
+        />
+
+        <ImportConflictDialog
+          open={conflictOpen}
+          conflicts={pendingConflicts}
+          onApply={handleConflictApply}
+          onCancel={handleConflictCancel}
         />
 
         <WhatsNewToast />
