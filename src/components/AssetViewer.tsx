@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import type { AssetData, AssetRow, SortState } from "@/lib/asset-types";
-import type { AssetEdits, AssetStatus } from "@/lib/asset-edits";
+import type { AssetEdits, AssetStatus, YesNo } from "@/lib/asset-edits";
 import {
   saveData, loadData, clearData, clearColumnOrder,
   loadMapping, saveMapping, clearAllMappings,
