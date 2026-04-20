@@ -1951,6 +1951,13 @@ export function AssetViewer() {
           onCancel={handleMultiAssetCancel}
         />
 
+        <BatchCommentDialog
+          open={batchCommentOpen}
+          onOpenChange={setBatchCommentOpen}
+          count={selectedIds.size}
+          onApply={(note) => applyBatchEdit(selectedIds, "comment", note)}
+        />
+
         <AssetHistoryDrawer
           open={historyDrawerOpen}
           onOpenChange={setHistoryDrawerOpen}
