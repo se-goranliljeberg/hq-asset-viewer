@@ -1,12 +1,12 @@
 import { useRef, useState, useCallback, useMemo, useEffect } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { AssetRow, SortState } from "@/lib/asset-types";
-import type { AssetEdits } from "@/lib/asset-edits";
-import { STATUS_OPTIONS, getEditKey } from "@/lib/asset-edits";
+import type { AssetEdits, YesNo } from "@/lib/asset-edits";
+import { STATUS_OPTIONS, getEditKey, effectiveSkanska, effectiveUserActive } from "@/lib/asset-edits";
 import {
   loadColumnOrder, saveColumnOrder, loadColumnWidths, saveColumnWidths,
 } from "@/lib/asset-store";
-import { ArrowUp, ArrowDown, ArrowUpDown, GripVertical } from "lucide-react";
+import { ArrowUp, ArrowDown, ArrowUpDown, GripVertical, AlertTriangle } from "lucide-react";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -23,6 +23,7 @@ import { parseEntries } from "@/lib/comment-log";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { ImportMeta } from "@/lib/import-meta";
 import { getImportedAt } from "@/lib/import-meta";
+import { daysSince } from "@/lib/stale-config";
 
 interface Props {
   rows: AssetRow[];
@@ -36,6 +37,7 @@ interface Props {
   selectedIds: Set<number>;
   onSelectionChange: (ids: Set<number>) => void;
   importedAt?: ImportMeta;
+  staleThreshold: number;
 }
 
 const MIN_COL_W = 80;
@@ -49,11 +51,12 @@ const COMMENTS_COL = "Comments";
 const CANONICAL_ORDER = [
   "Username", "Name", "Computername", "Modell", "Last account activity", "Last logon date",
   "Status", "Warranty until", "AD Create.Date", "Company", "Email", "Department", "Manager",
+  "User Active?", "Skanska computer?",
 ] as const;
 
 // Virtual app-managed columns — always shown even when the source file
 // has no matching header. Their values come from the edits store, not row.raw.
-const VIRTUAL_CANONICAL = new Set<string>(["Status", "Warranty until"]);
+const VIRTUAL_CANONICAL = new Set<string>(["Status", "Warranty until", "User Active?", "Skanska computer?"]);
 const TAIL_COLS = ["Exceptions", COMMENTS_COL, "Source file"];
 
 // Build the default display column order: canonical fields in fixed order
@@ -141,7 +144,7 @@ function InlineCell({ value, width, col, rowId, onCellEdit }: {
   );
 }
 
-export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellEdit, onUndoLast, selectedIds, onSelectionChange, importedAt }: Props) {
+export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellEdit, onUndoLast, selectedIds, onSelectionChange, importedAt, staleThreshold }: Props) {
   const parentRef = useRef<HTMLDivElement>(null);
 
   // Persisted column order
@@ -419,6 +422,37 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                     );
                   }
 
+                  if (col === "User Active?" || col === "Skanska computer?") {
+                    const isActive = col === "User Active?";
+                    const editKey: keyof AssetEdits = isActive ? "userActive" : "skanskaComputer";
+                    const effective: YesNo = isActive
+                      ? effectiveUserActive(rowEdits)
+                      : effectiveSkanska(rowEdits, row.computername);
+                    return (
+                      <div key={col} className="px-1 py-0.5" style={{ width: w, minWidth: MIN_COL_W }}>
+                        <Select
+                          value={effective || "__none__"}
+                          onValueChange={(v) => onEdit(row.id, editKey, v === "__none__" ? "" : v)}
+                        >
+                          <SelectTrigger
+                            className={cn(
+                              "h-7 text-xs border-transparent bg-transparent hover:border-border",
+                              effective === "no" && "text-destructive",
+                              effective === "" && "text-muted-foreground",
+                            )}
+                          >
+                            <SelectValue placeholder="—" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">—</SelectItem>
+                            <SelectItem value="yes">Yes</SelectItem>
+                            <SelectItem value="no">No</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    );
+                  }
+
                   if (col === COMMENTS_COL) {
                     const val = rowEdits?.comment ?? "";
                     const entries = parseEntries(val);
@@ -457,29 +491,53 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
 
                   // Editable raw data columns — double-click to edit
                   const val = row.raw[col] ?? "";
+                  const isLastLogon = col === "Last logon date";
+                  const days = isLastLogon ? daysSince(val) : null;
+                  const isStaleVal = isLastLogon && days !== null && days > staleThreshold;
                   const cell = (
-                    <InlineCell
+                    <div
                       key={col}
-                      value={val}
-                      width={w}
-                      col={col}
-                      rowId={row.id}
-                      onCellEdit={onCellEdit}
-                    />
+                      className={cn(
+                        "flex items-center",
+                        isStaleVal && "text-amber-600 dark:text-amber-400",
+                      )}
+                      style={{ width: w, minWidth: MIN_COL_W }}
+                    >
+                      {isStaleVal && (
+                        <AlertTriangle className="h-3 w-3 ml-2 shrink-0" strokeWidth={2} />
+                      )}
+                      <InlineCell
+                        value={val}
+                        width={isStaleVal ? Math.max(MIN_COL_W, w - 16) : w}
+                        col={col}
+                        rowId={row.id}
+                        onCellEdit={onCellEdit}
+                      />
+                    </div>
                   );
-                  if (col === "Last logon date" && val && importedAt) {
-                    const stamp = getImportedAt(importedAt, row.id, col);
+                  if (isLastLogon && val) {
+                    const stamp = importedAt ? getImportedAt(importedAt, row.id, col) : undefined;
+                    let stampLabel: string | null = null;
                     if (stamp) {
                       const d = new Date(stamp);
-                      const label = isNaN(d.getTime())
+                      stampLabel = isNaN(d.getTime())
                         ? stamp
                         : `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+                    }
+                    if (stampLabel || isStaleVal) {
                       return (
                         <Tooltip key={col}>
                           <TooltipTrigger asChild>
                             <div>{cell}</div>
                           </TooltipTrigger>
-                          <TooltipContent>Imported on {label}</TooltipContent>
+                          <TooltipContent>
+                            {stampLabel && <div>Imported on {stampLabel}</div>}
+                            {days !== null && (
+                              <div>
+                                {days} day{days === 1 ? "" : "s"} since last logon
+                              </div>
+                            )}
+                          </TooltipContent>
                         </Tooltip>
                       );
                     }

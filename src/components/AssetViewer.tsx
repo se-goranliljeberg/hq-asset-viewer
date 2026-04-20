@@ -14,12 +14,13 @@ import {
 import {
   getSheetNames, parseSheetWithMapping, mergeData, enrichWithUsers,
   inspectSheet, headerSetHash, migrateToCanonical,
-  type Mapping, type ParseResult,
+  detectUsernameConflicts,
+  type Mapping, type ParseResult, type UsernameConflict,
 } from "@/lib/excel-parser";
 import { exportCSV } from "@/lib/csv-export";
 import { KpiCards } from "./KpiCards";
 import type { KpiKey } from "./KpiCards";
-import { FilterBar, STATUS_NONE_TOKEN } from "./FilterBar";
+import { FilterBar, STATUS_NONE_TOKEN, type SkanskaFilter } from "./FilterBar";
 import { ActiveFilterChips, type FilterChip } from "./ActiveFilterChips";
 import { AssetTable } from "./AssetTable";
 import { AuditDashboard } from "./AuditDashboard";
@@ -45,14 +46,20 @@ import { InitialsPromptDialog } from "./InitialsPromptDialog";
 import { WhatsNewToast } from "./WhatsNewToast";
 import { APP_VERSION, useHasUnseenVersion } from "@/lib/version-state";
 import { loadImportMeta, saveImportMeta, mergeImportMeta, type ImportMeta } from "@/lib/import-meta";
+import { ImportConflictDialog, type ConflictResolutions } from "./ImportConflictDialog";
+import { loadStaleThreshold, saveStaleThreshold, DEFAULT_STALE_THRESHOLD_DAYS } from "@/lib/stale-config";
+import { effectiveSkanska, effectiveUserActive } from "@/lib/asset-edits";
 
 import { toast } from "sonner";
 
 const FILTER_STORAGE_KEYS = {
   models: "hq_filter_models",
   users: "hq_filter_users",
+  managers: "hq_filter_managers",
   sources: "hq_filter_sources",
   status: "hq_filter_status",
+  excludeInactive: "hq_filter_exclude_inactive",
+  skanska: "hq_filter_skanska",
 } as const;
 
 function loadFilterFromStorage(key: string, fallback: string[]): string[] {
@@ -111,17 +118,45 @@ export function AssetViewer() {
   const [search, setSearch] = useState("");
   const [modelFilter, setModelFilter] = useState<string[]>(() => loadFilterFromStorage(FILTER_STORAGE_KEYS.models, []));
   const [userFilter, setUserFilter] = useState<string[]>(() => loadFilterFromStorage(FILTER_STORAGE_KEYS.users, []));
+  const [managerFilter, setManagerFilter] = useState<string[]>(() => loadFilterFromStorage(FILTER_STORAGE_KEYS.managers, []));
   const [sourceFilter, setSourceFilter] = useState<string[]>(() => loadFilterFromStorage(FILTER_STORAGE_KEYS.sources, []));
   // Default: exclude "Sent back to broker" — show everything else (incl. no-status rows).
   const [statusFilter, setStatusFilter] = useState<string[]>(() =>
     loadFilterFromStorage(FILTER_STORAGE_KEYS.status, defaultStatusFilter),
   );
+  const [excludeInactive, setExcludeInactive] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    try {
+      const raw = localStorage.getItem(FILTER_STORAGE_KEYS.excludeInactive);
+      return raw === null ? true : raw === "true";
+    } catch { return true; }
+  });
+  const [skanskaFilter, setSkanskaFilter] = useState<SkanskaFilter>(() => {
+    if (typeof window === "undefined") return "skanska";
+    try {
+      const raw = localStorage.getItem(FILTER_STORAGE_KEYS.skanska);
+      if (raw === "all" || raw === "skanska" || raw === "non-skanska") return raw;
+    } catch { /* noop */ }
+    return "skanska";
+  });
+  const [staleThreshold, setStaleThresholdState] = useState<number>(() => loadStaleThreshold());
 
   // Persist filter selections so they survive reloads.
   useEffect(() => { saveFilterToStorage(FILTER_STORAGE_KEYS.models, modelFilter); }, [modelFilter]);
   useEffect(() => { saveFilterToStorage(FILTER_STORAGE_KEYS.users, userFilter); }, [userFilter]);
+  useEffect(() => { saveFilterToStorage(FILTER_STORAGE_KEYS.managers, managerFilter); }, [managerFilter]);
   useEffect(() => { saveFilterToStorage(FILTER_STORAGE_KEYS.sources, sourceFilter); }, [sourceFilter]);
   useEffect(() => { saveFilterToStorage(FILTER_STORAGE_KEYS.status, statusFilter); }, [statusFilter]);
+  useEffect(() => {
+    try { localStorage.setItem(FILTER_STORAGE_KEYS.excludeInactive, String(excludeInactive)); } catch { /* noop */ }
+  }, [excludeInactive]);
+  useEffect(() => {
+    try { localStorage.setItem(FILTER_STORAGE_KEYS.skanska, skanskaFilter); } catch { /* noop */ }
+  }, [skanskaFilter]);
+  const setStaleThreshold = useCallback((n: number) => {
+    setStaleThresholdState(n);
+    saveStaleThreshold(n);
+  }, []);
   const [exceptionsOnly, setExceptionsOnly] = useState(false);
   const [activeCard, setActiveCard] = useState<KpiKey | null>(null);
   const [sort, setSort] = useState<SortState>({ column: "", dir: null });
@@ -134,6 +169,11 @@ export function AssetViewer() {
   const [replaceOpen, setReplaceOpen] = useState(false);
   const [debugOpen, setDebugOpen] = useState(false);
   const [pendingIsUsersFile, setPendingIsUsersFile] = useState(false);
+
+  // Conflict resolution dialog state
+  const [conflictOpen, setConflictOpen] = useState(false);
+  const [pendingConflicts, setPendingConflicts] = useState<UsernameConflict[]>([]);
+  const pendingMode = useRef<"add" | "enrich">("add");
   const pendingBuffer = useRef<ArrayBuffer | null>(null);
   const pendingFilename = useRef("");
   const pendingSheet = useRef("");
@@ -383,6 +423,95 @@ export function AssetViewer() {
     }
   }, [data, setData, applySeedEdits, mergeAndPersistMeta]);
 
+  /** Apply user-chosen field overwrites for duplicate-username rows. */
+  const applyConflictResolutions = useCallback((resolutions: ConflictResolutions) => {
+    if (!data || !pendingParsed.current) return;
+    const incoming = pendingParsed.current;
+    const seedMap = pendingSeedEdits.current;
+    const stamps = pendingImportedAt.current;
+    const importIso = new Date().toISOString();
+
+    // Build incoming row by id (use existingRowId from conflicts).
+    const incomingByExistingId = new Map<number, { row: AssetRow; idx: number }>();
+    for (const c of pendingConflicts) {
+      incomingByExistingId.set(c.existingRow.id, { row: c.incomingRow, idx: c.incomingIdx });
+    }
+
+    const newImportedAt: ImportMeta = {};
+    const newSeedPatch: Record<string, AssetEdits> = {};
+    const auditByRow = new Map<number, string[]>();
+
+    const updatedRows = data.rows.map((r) => {
+      const fieldsToApply = resolutions.get(r.id);
+      const inc = incomingByExistingId.get(r.id);
+      if (!fieldsToApply || fieldsToApply.size === 0 || !inc) return r;
+      const newRaw = { ...r.raw };
+      const incomingSeed = seedMap[String(inc.idx)] ?? {};
+      const audit: string[] = [];
+      let nextStatus = r.computername; // unused placeholder
+      let nextSeed: AssetEdits | undefined;
+
+      for (const field of fieldsToApply) {
+        if (field === "Status") {
+          const newVal = (incomingSeed.status ?? "") as string;
+          const oldVal = "(seed)"; void oldVal;
+          nextSeed = { ...(nextSeed ?? { status: "", warrantyUntil: "" }), status: incomingSeed.status ?? "" };
+          audit.push(`Status to "${newVal || "(empty)"}"`);
+        } else if (field === "Warranty until") {
+          nextSeed = { ...(nextSeed ?? { status: "", warrantyUntil: "" }), warrantyUntil: incomingSeed.warrantyUntil ?? "" };
+          audit.push(`Warranty until to "${incomingSeed.warrantyUntil || "(empty)"}"`);
+        } else if (field === "User Active?") {
+          nextSeed = { ...(nextSeed ?? { status: "", warrantyUntil: "" }), userActive: incomingSeed.userActive ?? "" };
+          audit.push(`User Active? to "${incomingSeed.userActive || "(empty)"}"`);
+        } else if (field === "Skanska computer?") {
+          nextSeed = { ...(nextSeed ?? { status: "", warrantyUntil: "" }), skanskaComputer: incomingSeed.skanskaComputer ?? "" };
+          audit.push(`Skanska computer? to "${incomingSeed.skanskaComputer || "(empty)"}"`);
+        } else {
+          const oldVal = newRaw[field] ?? "";
+          const newVal = inc.row.raw[field] ?? "";
+          newRaw[field] = newVal;
+          audit.push(`${field} from "${oldVal || "(empty)"}" to "${newVal}"`);
+          if (!newImportedAt[r.id]) newImportedAt[r.id] = {};
+          newImportedAt[r.id][field] = importIso;
+        }
+      }
+      void nextStatus;
+      if (nextSeed) newSeedPatch[String(r.id)] = nextSeed;
+      if (audit.length > 0) auditByRow.set(r.id, audit);
+
+      // Sync mirror props
+      const cn = (newRaw["Computername"] ?? r.computername).trim();
+      const md = (newRaw["Modell"] ?? r.modell).trim();
+      const us = (newRaw["Username"] ?? r.user).trim();
+      return { ...r, raw: newRaw, computername: cn, modell: md, user: us };
+    });
+
+    setData({ ...data, rows: updatedRows });
+
+    // Append audit comments + merge seed patches
+    if (auditByRow.size > 0 || Object.keys(newSeedPatch).length > 0) {
+      setEditsState((prev) => {
+        const next = { ...prev };
+        for (const [rowId, msgs] of auditByRow.entries()) {
+          const key = getEditKey(rowId);
+          const cur = next[key] ?? { status: "", warrantyUntil: "" };
+          const merged = { ...cur, ...(newSeedPatch[String(rowId)] ?? {}) };
+          merged.comment = appendComment(cur.comment, `Imported update: ${msgs.join(", ")}`);
+          next[key] = merged;
+        }
+        // Apply seed patches that had no audit (shouldn't happen, but be safe).
+        for (const [k, patch] of Object.entries(newSeedPatch)) {
+          if (!auditByRow.has(Number(k))) {
+            next[k] = { ...(next[k] ?? { status: "", warrantyUntil: "" }), ...patch };
+          }
+        }
+        saveEdits(next);
+        return next;
+      });
+    }
+    if (Object.keys(newImportedAt).length > 0) mergeAndPersistMeta(newImportedAt);
+  }, [data, setData, mergeAndPersistMeta, pendingConflicts]);
+
   const handleImportEnrich = useCallback(() => {
     setImportModeOpen(false);
     if (pendingParsed.current && data) {
@@ -455,9 +584,32 @@ export function AssetViewer() {
     setImportModeOpen(false);
     if (pendingParsed.current && data) {
       const incoming = pendingParsed.current;
+      // Detect username conflicts first.
+      const { conflicts, nonConflicting } = detectUsernameConflicts(
+        data, incoming, pendingSeedEdits.current, edits,
+      );
+      if (conflicts.length > 0) {
+        // Stash filtered incoming for the post-conflict step.
+        pendingParsed.current = { ...incoming, rows: nonConflicting.map((n) => n.row) };
+        // Remap seed edits to the filtered incoming list (re-index to 0..N).
+        const newSeed: Record<string, AssetEdits> = {};
+        const newStamps: Record<number, Record<string, string>> = {};
+        nonConflicting.forEach((n, newIdx) => {
+          const oldSeed = pendingSeedEdits.current[String(n.incomingIdx)];
+          if (oldSeed) newSeed[String(newIdx)] = oldSeed;
+          const oldStamps = pendingImportedAt.current[n.incomingIdx];
+          if (oldStamps) newStamps[newIdx] = oldStamps;
+        });
+        pendingSeedEdits.current = newSeed;
+        pendingImportedAt.current = newStamps;
+        setPendingConflicts(conflicts);
+        pendingMode.current = "add";
+        setConflictOpen(true);
+        return;
+      }
+      // No conflicts — proceed with merge as before.
       const merged = mergeData(data, incoming);
       setData(merged);
-      // mergeData reindexes incoming rows: new id = maxExistingId + 1 + originalIndex.
       const maxExistingId = data.rows.reduce((m, r) => Math.max(m, r.id), -1);
       const remappedSeed: Record<string, AssetEdits> = {};
       for (const [oldKey, seed] of Object.entries(pendingSeedEdits.current)) {
@@ -473,7 +625,57 @@ export function AssetViewer() {
       pendingSeedEdits.current = {};
       pendingImportedAt.current = {};
     }
-  }, [data, setData, applySeedEdits, mergeAndPersistMeta, remapImportedAt]);
+  }, [data, edits, setData, applySeedEdits, mergeAndPersistMeta, remapImportedAt]);
+
+  const handleConflictApply = useCallback((resolutions: ConflictResolutions) => {
+    setConflictOpen(false);
+    applyConflictResolutions(resolutions);
+    // Continue with non-conflicting rows via the original mode flow.
+    if (data && pendingParsed.current && pendingParsed.current.rows.length > 0) {
+      const incoming = pendingParsed.current;
+      if (pendingMode.current === "enrich") {
+        const merged = enrichWithUsers(data, incoming);
+        setData(merged);
+        const maxExistingId = data.rows.reduce((m, r) => Math.max(m, r.id), -1);
+        const remappedSeed: Record<string, AssetEdits> = {};
+        incoming.rows.forEach((_row, i) => {
+          const seed = pendingSeedEdits.current[String(i)];
+          if (seed) remappedSeed[String(maxExistingId + 1 + i)] = seed;
+        });
+        applySeedEdits(remappedSeed);
+        mergeAndPersistMeta(remapImportedAt(incoming.rows.length, (i) => maxExistingId + 1 + i));
+        toast.success(`Resolved conflicts and enriched — total rows: ${merged.rows.length}`);
+      } else {
+        const merged = mergeData(data, incoming);
+        setData(merged);
+        const maxExistingId = data.rows.reduce((m, r) => Math.max(m, r.id), -1);
+        const remappedSeed: Record<string, AssetEdits> = {};
+        for (const [oldKey, seed] of Object.entries(pendingSeedEdits.current)) {
+          const oldIdx = Number(oldKey);
+          if (Number.isFinite(oldIdx)) remappedSeed[String(maxExistingId + 1 + oldIdx)] = seed;
+        }
+        applySeedEdits(remappedSeed);
+        mergeAndPersistMeta(remapImportedAt(incoming.rows.length, (i) => maxExistingId + 1 + i));
+        toast.success(`Resolved conflicts and added ${incoming.rows.length} new rows`);
+      }
+    } else {
+      toast.success("Resolved duplicate-username conflicts.");
+    }
+    pendingParsed.current = null;
+    pendingSeedEdits.current = {};
+    pendingImportedAt.current = {};
+    setPendingConflicts([]);
+  }, [data, setData, applySeedEdits, mergeAndPersistMeta, remapImportedAt, applyConflictResolutions]);
+
+  const handleConflictCancel = useCallback(() => {
+    setConflictOpen(false);
+    setPendingConflicts([]);
+    pendingParsed.current = null;
+    pendingSeedEdits.current = {};
+    pendingImportedAt.current = {};
+    toast.info("Import cancelled.");
+  }, []);
+
 
 
   const handleAddRow = useCallback((raw: Record<string, string>, status: AssetStatus, warrantyUntil: string) => {
@@ -656,8 +858,11 @@ export function AssetViewer() {
     setModelFilter([]);
     setUserFilter([]);
     setSourceFilter([]);
+    setManagerFilter([]);
     setStatusFilter(defaultStatusFilter);
     setExceptionsOnly(false);
+    setExcludeInactive(true);
+    setSkanskaFilter("skanska");
     setSort({ column: "", dir: null });
     setConfirmClear(false);
     toast.success("Local data cleared.");
@@ -667,9 +872,12 @@ export function AssetViewer() {
     setSearch("");
     setModelFilter([]);
     setUserFilter([]);
+    setManagerFilter([]);
     setSourceFilter([]);
     setStatusFilter([]);
     setExceptionsOnly(false);
+    setExcludeInactive(false);
+    setSkanskaFilter("all");
   }, []);
 
   const toggleSort = useCallback((col: string) => {
@@ -696,6 +904,12 @@ export function AssetViewer() {
     [rows],
   );
 
+  const managers = useMemo(
+    () => [...new Set(rows.map((r) => (r.raw["Manager"] ?? "").trim()).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" })),
+    [rows],
+  );
+
   const hasManualOrEdits = useMemo(() => {
     const hasEditsVal = Object.values(edits).some((e) => e.status !== "" || e.warrantyUntil !== "");
     const hasManual = rows.some((r) => r.sourceFile === "Manual entry");
@@ -707,9 +921,30 @@ export function AssetViewer() {
     if (activeCard === "exceptions") result = result.filter((r) => r.exceptions.length > 0);
     else if (activeCard === "users") result = result.filter((r) => r.user !== "");
     else if (activeCard === "models") result = result.filter((r) => r.modell !== "");
+    else if (activeCard === "stale") {
+      result = result.filter((r) => {
+        const v = r.raw["Last logon date"] ?? "";
+        if (!v) return false;
+        const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
+        if (!m) return false;
+        const then = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+        return Math.floor((Date.now() - then) / 86_400_000) > staleThreshold;
+      });
+    }
     if (exceptionsOnly && activeCard !== "exceptions") result = result.filter((r) => r.exceptions.length > 0);
+    if (excludeInactive) {
+      result = result.filter((r) => effectiveUserActive(edits[getEditKey(r.id)]) !== "no");
+    }
+    if (skanskaFilter !== "all") {
+      result = result.filter((r) => {
+        const eff = effectiveSkanska(edits[getEditKey(r.id)], r.computername);
+        if (skanskaFilter === "skanska") return eff === "yes" || eff === "";
+        return eff === "no";
+      });
+    }
     if (modelFilter.length > 0) result = result.filter((r) => modelFilter.includes(r.modell));
     if (userFilter.length > 0) result = result.filter((r) => userFilter.includes(r.user));
+    if (managerFilter.length > 0) result = result.filter((r) => managerFilter.includes((r.raw["Manager"] ?? "").trim()));
     if (sourceFilter.length > 0) result = result.filter((r) => sourceFilter.includes(r.sourceFile));
     if (statusFilter.length > 0) {
       result = result.filter((r) => {

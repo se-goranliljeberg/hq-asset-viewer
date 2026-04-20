@@ -1,6 +1,6 @@
 import * as XLSX from "xlsx";
 import type { AssetRow, AssetData } from "./asset-types";
-import type { AssetEdits, AssetStatus } from "./asset-edits";
+import type { AssetEdits, AssetStatus, YesNo } from "./asset-edits";
 import { STATUS_OPTIONS } from "./asset-edits";
 
 // Columns we add on export that are derived/computed, not source data.
@@ -24,6 +24,8 @@ export const CANONICAL_FIELDS = [
   "Email",
   "Department",
   "Manager",
+  "User Active?",
+  "Skanska computer?",
 ] as const;
 
 export type CanonicalField = (typeof CANONICAL_FIELDS)[number];
@@ -49,6 +51,8 @@ const ALIASES: Record<CanonicalField, string[]> = {
   Email: ["email", "mail", "e-mail", "userprincipalname", "upn", "email address"],
   Department: ["department", "dept", "avdelning"],
   Manager: ["manager", "reports to", "chef", "linemanager", "line manager", "supervisor"],
+  "User Active?": ["user active", "useractive", "active", "enabled", "accountdisabled", "account disabled", "disabled", "is active", "isactive"],
+  "Skanska computer?": ["skanska computer", "skanskacomputer", "skanska device", "company device", "corporate device", "company computer", "corporate computer"],
 };
 
 // Substring patterns for fuzzy matches (when alias miss).
@@ -66,6 +70,8 @@ const FUZZY_SUBSTRINGS: Record<CanonicalField, string[]> = {
   Email: ["email", "mail", "upn"],
   Department: ["department", "dept"],
   Manager: ["manager", "supervisor"],
+  "User Active?": ["active", "enabled", "disabled"],
+  "Skanska computer?": ["skanska", "company device", "corporate device"],
 };
 
 export interface MappingDetection {
@@ -148,7 +154,27 @@ export function normalizeStatus(input: unknown): AssetStatus {
   return "";
 }
 
-// ---------- Date normalization ----------
+// ---------- Yes/No normalization ----------
+
+/**
+ * Map any truthy/falsy import string into "yes" | "no" | "".
+ * Recognises: yes/no, true/false, 1/0, enabled/disabled, active/inactive.
+ * For "User Active?" specifically, "accountdisabled = TRUE" means inactive,
+ * which is handled by the caller via the `invert` flag.
+ */
+export function normalizeYesNo(input: unknown, invert = false): YesNo {
+  if (input === null || input === undefined) return "";
+  const raw = String(input).trim().toLowerCase();
+  if (!raw) return "";
+  let v: YesNo = "";
+  if (["yes", "y", "true", "1", "enabled", "active", "ok"].includes(raw)) v = "yes";
+  else if (["no", "n", "false", "0", "disabled", "inactive", "not active"].includes(raw)) v = "no";
+  else return "";
+  if (invert) v = v === "yes" ? "no" : "yes";
+  return v;
+}
+
+
 
 export function getSheetNames(buffer: ArrayBuffer): string[] {
   const wb = XLSX.read(buffer, { type: "array" });
@@ -272,6 +298,10 @@ export function parseSheetWithMapping(
   const statusHeader = fieldToHeader["Status"];
   const warrantyHeader = fieldToHeader["Warranty until"];
   const createdHeader = fieldToHeader["AD Create.Date"];
+  const activeHeader = fieldToHeader["User Active?"];
+  const skanskaHeader = fieldToHeader["Skanska computer?"];
+  // If header is "AccountDisabled", treat truthy values as inactive (invert).
+  const activeHeaderInverts = !!activeHeader && /disabled/i.test(activeHeader);
 
   const dateFields: ReadonlySet<CanonicalField> = new Set<CanonicalField>([
     "AD Create.Date",
@@ -354,13 +384,29 @@ export function parseSheetWithMapping(
 
     if (Object.keys(rowStamps).length > 0) importedAt[idx] = rowStamps;
 
-    // Seed edits from imported Status / Warranty until columns
+    // Seed edits from imported Status / Warranty until / Active / Skanska columns
     const statusVal = statusHeader ? String(row[statusHeader] ?? "").trim() : "";
     const warrantyVal = warrantyHeader ? normalizeDate(row[warrantyHeader]) : "";
     const validStatus = normalizeStatus(statusVal);
-    if (validStatus || warrantyVal) {
-      seedEdits[String(idx)] = { status: validStatus, warrantyUntil: warrantyVal };
+    const activeVal: YesNo = activeHeader
+      ? normalizeYesNo(row[activeHeader], activeHeaderInverts)
+      : "";
+    let skanskaVal: YesNo = skanskaHeader ? normalizeYesNo(row[skanskaHeader]) : "";
+    // Per spec: if computername is empty, leave Skanska empty (don't default).
+    if (!skanskaVal && computername) skanskaVal = "yes";
+    if (!computername) skanskaVal = "";
+
+    if (validStatus || warrantyVal || activeVal || skanskaVal) {
+      seedEdits[String(idx)] = {
+        status: validStatus,
+        warrantyUntil: warrantyVal,
+        ...(activeVal ? { userActive: activeVal } : {}),
+        ...(skanskaVal ? { skanskaComputer: skanskaVal } : {}),
+      };
     }
+
+    // Inactive-user exception
+    if (activeVal === "no") exceptions.push("Inactive user");
 
     return { id: idx, computername, modell, user, raw, exceptions, sourceFile: filename };
   });
@@ -523,3 +569,102 @@ export function migrateToCanonical(data: AssetData): { data: AssetData; changed:
     changed: true,
   };
 }
+
+// ---------- Username-as-master conflict detection ----------
+
+export interface FieldDiff {
+  field: string;
+  oldVal: string;
+  newVal: string;
+}
+
+export interface UsernameConflict {
+  existingRow: AssetRow;
+  incomingRow: AssetRow;
+  /** Original index in `incoming.rows` — used by callers to look up seedEdits. */
+  incomingIdx: number;
+  diffs: FieldDiff[];
+}
+
+export interface ConflictDetectionResult {
+  conflicts: UsernameConflict[];
+  /** Incoming rows (with their original index) that had no username match. */
+  nonConflicting: Array<{ row: AssetRow; incomingIdx: number }>;
+}
+
+/**
+ * Match incoming rows against existing rows by Username (case-insensitive, trimmed).
+ * Rows without a username on either side don't participate — they fall through
+ * to the existing merge/enrich path.
+ *
+ * The diffs list contains only fields where existing !== incoming AND incoming !== "".
+ */
+export function detectUsernameConflicts(
+  existing: AssetData,
+  incoming: AssetData,
+  seedEdits: Record<string, AssetEdits> = {},
+  existingEdits: Record<string, AssetEdits> = {},
+): ConflictDetectionResult {
+  const byUser = new Map<string, AssetRow>();
+  for (const r of existing.rows) {
+    const u = r.user.trim().toLowerCase();
+    if (u) byUser.set(u, r);
+  }
+
+  const conflicts: UsernameConflict[] = [];
+  const nonConflicting: Array<{ row: AssetRow; incomingIdx: number }> = [];
+
+  incoming.rows.forEach((row, idx) => {
+    const u = row.user.trim().toLowerCase();
+    const match = u ? byUser.get(u) : undefined;
+    if (!match) {
+      nonConflicting.push({ row, incomingIdx: idx });
+      return;
+    }
+    const incomingSeed = seedEdits[String(idx)];
+    const existingSeed = existingEdits[String(match.id)];
+    const diffs: FieldDiff[] = [];
+
+    // Canonical raw fields (Username already matched, skip it).
+    for (const f of CANONICAL_FIELDS) {
+      if (f === "Username") continue;
+      // Status / Warranty / Active / Skanska come from seedEdits, not raw.
+      if (f === "Status") {
+        const newVal = incomingSeed?.status ?? "";
+        const oldVal = existingSeed?.status ?? "";
+        if (newVal && newVal !== oldVal) diffs.push({ field: f, oldVal, newVal });
+        continue;
+      }
+      if (f === "Warranty until") {
+        const newVal = incomingSeed?.warrantyUntil ?? "";
+        const oldVal = existingSeed?.warrantyUntil ?? "";
+        if (newVal && newVal !== oldVal) diffs.push({ field: f, oldVal, newVal });
+        continue;
+      }
+      if (f === "User Active?") {
+        const newVal = incomingSeed?.userActive ?? "";
+        const oldVal = existingSeed?.userActive ?? "";
+        if (newVal && newVal !== oldVal) diffs.push({ field: f, oldVal, newVal });
+        continue;
+      }
+      if (f === "Skanska computer?") {
+        const newVal = incomingSeed?.skanskaComputer ?? "";
+        const oldVal = existingSeed?.skanskaComputer ?? "";
+        if (newVal && newVal !== oldVal) diffs.push({ field: f, oldVal, newVal });
+        continue;
+      }
+      const newVal = (row.raw[f] ?? "").trim();
+      const oldVal = (match.raw[f] ?? "").trim();
+      if (newVal && newVal !== oldVal) diffs.push({ field: f, oldVal, newVal });
+    }
+
+    if (diffs.length > 0) {
+      conflicts.push({ existingRow: match, incomingRow: row, incomingIdx: idx, diffs });
+    }
+    // If usernames match but no diffs, treat as fully-handled: do NOT add as new row.
+    // (We silently skip duplicates with no new info.)
+  });
+
+  return { conflicts, nonConflicting };
+}
+
