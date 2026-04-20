@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import type { AssetData, AssetRow, SortState } from "@/lib/asset-types";
-import type { AssetEdits, AssetStatus } from "@/lib/asset-edits";
+import type { AssetEdits, AssetStatus, YesNo } from "@/lib/asset-edits";
 import {
   saveData, loadData, clearData, clearColumnOrder,
   loadMapping, saveMapping, clearAllMappings,
@@ -45,6 +45,7 @@ import { ColumnMappingDialog } from "./ColumnMappingDialog";
 import { InitialsPromptDialog } from "./InitialsPromptDialog";
 import { WhatsNewToast } from "./WhatsNewToast";
 import { MultiAssetImportDialog, type MultiAssetResolution } from "./MultiAssetImportDialog";
+import { BatchCommentDialog } from "./BatchCommentDialog";
 import { AssetHistoryDrawer } from "./AssetHistoryDrawer";
 import { UserHistoryDrawer } from "./UserHistoryDrawer";
 import { AssetManagementView } from "./AssetManagementView";
@@ -190,6 +191,9 @@ export function AssetViewer() {
   const [userDrawerOpen, setUserDrawerOpen] = useState(false);
   const [userDrawerKey, setUserDrawerKey] = useState<string | null>(null);
   const [userDrawerDisplay, setUserDrawerDisplay] = useState("");
+
+  // Batch comment dialog state.
+  const [batchCommentOpen, setBatchCommentOpen] = useState(false);
 
   // Conflict resolution dialog state
   const [conflictOpen, setConflictOpen] = useState(false);
@@ -424,6 +428,63 @@ export function AssetViewer() {
     }
     ensureInitials(() => performEdit(rowId, field, value));
   }, [performEdit, ensureInitials, data, handleStatusReturnSplit]);
+
+  /**
+   * Apply a batch edit to all currently selected rows.
+   * - For Yes/No fields (userActive, skanskaComputer) and status, sets the
+   *   value and appends a "(batch)" audit entry per row that actually changed.
+   * - For "comment", appends a free-text note to every selected row.
+   */
+  const applyBatchEdit = useCallback(
+    (
+      ids: Set<number>,
+      kind: "userActive" | "skanskaComputer" | "comment",
+      value: string,
+    ) => {
+      if (ids.size === 0) return;
+      ensureInitials(() => {
+        setEditsState((prev) => {
+          const next = { ...prev };
+          let changed = 0;
+          for (const id of ids) {
+            const key = getEditKey(id);
+            const current = next[key] ?? { status: "" as AssetStatus, warrantyUntil: "" };
+            if (kind === "comment") {
+              next[key] = {
+                ...current,
+                comment: appendComment(current.comment, `[note] ${value} (batch)`),
+              };
+              changed += 1;
+              continue;
+            }
+            const fieldLabel = kind === "userActive" ? "User Active?" : "Skanska computer?";
+            const before = current[kind] ?? "";
+            const after = value as YesNo;
+            if (before === after) continue;
+            next[key] = {
+              ...current,
+              [kind]: after,
+              comment: appendComment(
+                current.comment,
+                `${describeChange(fieldLabel, before, after)} (batch)`,
+              ),
+            };
+            changed += 1;
+          }
+          saveEdits(next);
+          if (kind === "comment") {
+            toast.success(`Added comment to ${changed} row${changed === 1 ? "" : "s"}`);
+          } else {
+            toast.success(
+              `Updated ${kind === "userActive" ? "User Active?" : "Skanska computer?"} on ${changed} row${changed === 1 ? "" : "s"}`,
+            );
+          }
+          return next;
+        });
+      });
+    },
+    [ensureInitials],
+  );
 
   const performCellEdit = useCallback((rowId: number, column: string, value: string) => {
     if (!data) return;
@@ -1644,6 +1705,49 @@ export function AssetViewer() {
                         ))}
                       </SelectContent>
                     </Select>
+                    <Select
+                      value="__batch__"
+                      onValueChange={(v) => {
+                        if (v === "__batch__") return;
+                        const val = v === "__none__" ? "" : v;
+                        applyBatchEdit(selectedIds, "userActive", val);
+                      }}
+                    >
+                      <SelectTrigger className="h-8 w-[180px] text-xs">
+                        <SelectValue placeholder="Set User Active?…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__batch__" disabled>Set User Active?…</SelectItem>
+                        <SelectItem value="__none__">— Clear (default Yes)</SelectItem>
+                        <SelectItem value="yes">Yes (active)</SelectItem>
+                        <SelectItem value="no">No (inactive)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Select
+                      value="__batch__"
+                      onValueChange={(v) => {
+                        if (v === "__batch__") return;
+                        const val = v === "__none__" ? "" : v;
+                        applyBatchEdit(selectedIds, "skanskaComputer", val);
+                      }}
+                    >
+                      <SelectTrigger className="h-8 w-[180px] text-xs">
+                        <SelectValue placeholder="Set Skanska computer?…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__batch__" disabled>Set Skanska computer?…</SelectItem>
+                        <SelectItem value="__none__">— Clear (default Yes)</SelectItem>
+                        <SelectItem value="yes">Yes</SelectItem>
+                        <SelectItem value="no">No</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setBatchCommentOpen(true)}
+                    >
+                      Add comment…
+                    </Button>
                     {selectedIds.size === 1 && (
                       <>
                         <Button
@@ -1845,6 +1949,13 @@ export function AssetViewer() {
           cases={pendingMultiAssetCases}
           onApply={handleMultiAssetApply}
           onCancel={handleMultiAssetCancel}
+        />
+
+        <BatchCommentDialog
+          open={batchCommentOpen}
+          onOpenChange={setBatchCommentOpen}
+          count={selectedIds.size}
+          onApply={(note) => applyBatchEdit(selectedIds, "comment", note)}
         />
 
         <AssetHistoryDrawer
