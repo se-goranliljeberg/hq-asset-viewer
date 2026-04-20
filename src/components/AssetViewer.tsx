@@ -176,6 +176,19 @@ export function AssetViewer() {
   const [debugOpen, setDebugOpen] = useState(false);
   const [pendingIsUsersFile, setPendingIsUsersFile] = useState(false);
 
+  // Multi-asset import dialog state (incoming computer for an existing user).
+  const [multiAssetOpen, setMultiAssetOpen] = useState(false);
+  const [pendingMultiAssetCases, setPendingMultiAssetCases] = useState<MultiAssetIncoming[]>([]);
+
+  // Asset history drawer state.
+  const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
+  const [historyDrawerRow, setHistoryDrawerRow] = useState<_AssetRow | null>(null);
+
+  // User profile drawer state (opened from Audit Report).
+  const [userDrawerOpen, setUserDrawerOpen] = useState(false);
+  const [userDrawerKey, setUserDrawerKey] = useState<string | null>(null);
+  const [userDrawerDisplay, setUserDrawerDisplay] = useState("");
+
   // Conflict resolution dialog state
   const [conflictOpen, setConflictOpen] = useState(false);
   const [pendingConflicts, setPendingConflicts] = useState<UsernameConflict[]>([]);
@@ -1467,7 +1480,38 @@ export function AssetViewer() {
               ? rows.find((r) => r.id === Array.from(selectedIds)[0]) ?? null
               : null
           }
+          allRows={rows}
+          edits={edits}
           onReplace={handleReplaceDevice}
+        />
+
+        <MultiAssetImportDialog
+          open={multiAssetOpen}
+          cases={pendingMultiAssetCases}
+          onApply={handleMultiAssetApply}
+          onCancel={handleMultiAssetCancel}
+        />
+
+        <AssetHistoryDrawer
+          open={historyDrawerOpen}
+          onOpenChange={setHistoryDrawerOpen}
+          row={historyDrawerRow}
+          edits={edits}
+          importedAt={importMeta}
+          onPickUser={(u) => {
+            setUserFilter([u]);
+            setHistoryDrawerOpen(false);
+            toast.success(`Filtered by user "${u}"`);
+          }}
+        />
+
+        <UserHistoryDrawer
+          open={userDrawerOpen}
+          onOpenChange={setUserDrawerOpen}
+          userKey={userDrawerKey}
+          userDisplay={userDrawerDisplay}
+          rows={rows}
+          edits={edits}
         />
 
         <ImportDebugger open={debugOpen} onOpenChange={setDebugOpen} />
