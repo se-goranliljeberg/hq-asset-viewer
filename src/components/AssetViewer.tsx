@@ -982,6 +982,15 @@ export function AssetViewer() {
                         ))}
                       </SelectContent>
                     </Select>
+                    {selectedIds.size === 1 && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setReplaceOpen(true)}
+                      >
+                        <RefreshCw className="h-3.5 w-3.5 mr-1" /> Replace device
+                      </Button>
+                    )}
                     <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>
                       Deselect all
                     </Button>
