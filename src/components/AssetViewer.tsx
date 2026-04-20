@@ -266,6 +266,17 @@ export function AssetViewer() {
     }
   }, [hydrated, data, setDataDirect]);
 
+  // One-time lifecycle backfill: stamp `assetKind` on existing rows.
+  useEffect(() => {
+    if (!hydrated || !data || isLifecycleMigrated()) return;
+    const { data: migrated, changed } = migrateLifecycle(data);
+    markLifecycleMigrated();
+    if (changed) {
+      setDataDirect(migrated);
+      saveData(migrated);
+    }
+  }, [hydrated, data, setDataDirect]);
+
   const performEdit = useCallback((rowId: number, field: keyof AssetEdits, value: string) => {
     setEditsState((prev) => {
       const key = getEditKey(rowId);
@@ -1463,9 +1474,14 @@ export function AssetViewer() {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => setReplaceOpen(true)}
+                        onClick={() => {
+                          const id = Array.from(selectedIds)[0];
+                          const r = rows.find((x) => x.id === id) ?? null;
+                          setHistoryDrawerRow(r);
+                          setHistoryDrawerOpen(true);
+                        }}
                       >
-                        <RefreshCw className="h-3.5 w-3.5 mr-1" /> Replace device
+                        History
                       </Button>
                     )}
                     <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>
