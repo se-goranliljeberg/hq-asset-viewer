@@ -405,7 +405,10 @@ export function AssetViewer() {
       incoming.rows.forEach((row, i) => {
         const u = row.user.toLowerCase();
         const e = (row.raw["Email"] ?? "").toLowerCase();
-        const matchId = (u && byUserExisting.get(u)) ?? (e && byEmailExisting.get(e)) ?? null;
+        const matchId: number | null =
+          (u ? byUserExisting.get(u) : undefined) ??
+          (e ? byEmailExisting.get(e) : undefined) ??
+          null;
         let assignedId: number;
         if (matchId !== null && !matchedUserKeys.has(String(matchId))) {
           matchedUserKeys.add(String(matchId));
