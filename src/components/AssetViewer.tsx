@@ -1705,6 +1705,49 @@ export function AssetViewer() {
                         ))}
                       </SelectContent>
                     </Select>
+                    <Select
+                      value="__batch__"
+                      onValueChange={(v) => {
+                        if (v === "__batch__") return;
+                        const val = v === "__none__" ? "" : v;
+                        applyBatchEdit(selectedIds, "userActive", val);
+                      }}
+                    >
+                      <SelectTrigger className="h-8 w-[180px] text-xs">
+                        <SelectValue placeholder="Set User Active?…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__batch__" disabled>Set User Active?…</SelectItem>
+                        <SelectItem value="__none__">— Clear (default Yes)</SelectItem>
+                        <SelectItem value="yes">Yes (active)</SelectItem>
+                        <SelectItem value="no">No (inactive)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Select
+                      value="__batch__"
+                      onValueChange={(v) => {
+                        if (v === "__batch__") return;
+                        const val = v === "__none__" ? "" : v;
+                        applyBatchEdit(selectedIds, "skanskaComputer", val);
+                      }}
+                    >
+                      <SelectTrigger className="h-8 w-[180px] text-xs">
+                        <SelectValue placeholder="Set Skanska computer?…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__batch__" disabled>Set Skanska computer?…</SelectItem>
+                        <SelectItem value="__none__">— Clear (default Yes)</SelectItem>
+                        <SelectItem value="yes">Yes</SelectItem>
+                        <SelectItem value="no">No</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setBatchCommentOpen(true)}
+                    >
+                      Add comment…
+                    </Button>
                     {selectedIds.size === 1 && (
                       <>
                         <Button
