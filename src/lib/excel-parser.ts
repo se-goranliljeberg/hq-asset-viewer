@@ -154,7 +154,27 @@ export function normalizeStatus(input: unknown): AssetStatus {
   return "";
 }
 
-// ---------- Date normalization ----------
+// ---------- Yes/No normalization ----------
+
+/**
+ * Map any truthy/falsy import string into "yes" | "no" | "".
+ * Recognises: yes/no, true/false, 1/0, enabled/disabled, active/inactive.
+ * For "User Active?" specifically, "accountdisabled = TRUE" means inactive,
+ * which is handled by the caller via the `invert` flag.
+ */
+export function normalizeYesNo(input: unknown, invert = false): YesNo {
+  if (input === null || input === undefined) return "";
+  const raw = String(input).trim().toLowerCase();
+  if (!raw) return "";
+  let v: YesNo = "";
+  if (["yes", "y", "true", "1", "enabled", "active", "ok"].includes(raw)) v = "yes";
+  else if (["no", "n", "false", "0", "disabled", "inactive", "not active"].includes(raw)) v = "no";
+  else return "";
+  if (invert) v = v === "yes" ? "no" : "yes";
+  return v;
+}
+
+
 
 export function getSheetNames(buffer: ArrayBuffer): string[] {
   const wb = XLSX.read(buffer, { type: "array" });
