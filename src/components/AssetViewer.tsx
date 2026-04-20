@@ -1568,6 +1568,15 @@ export function AssetViewer() {
                   onSelectionChange={setSelectedIds}
                   importedAt={importMeta}
                   staleThreshold={staleThreshold}
+                  onOpenUser={(u) => {
+                    setUserDrawerKey(u.trim().toLowerCase());
+                    setUserDrawerDisplay(u);
+                    setUserDrawerOpen(true);
+                  }}
+                  onOpenAsset={(r) => {
+                    setHistoryDrawerRow(r);
+                    setHistoryDrawerOpen(true);
+                  }}
                 />
               </TabsContent>
 
