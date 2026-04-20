@@ -192,6 +192,9 @@ export function AssetViewer() {
   const [userDrawerKey, setUserDrawerKey] = useState<string | null>(null);
   const [userDrawerDisplay, setUserDrawerDisplay] = useState("");
 
+  // Batch comment dialog state.
+  const [batchCommentOpen, setBatchCommentOpen] = useState(false);
+
   // Conflict resolution dialog state
   const [conflictOpen, setConflictOpen] = useState(false);
   const [pendingConflicts, setPendingConflicts] = useState<UsernameConflict[]>([]);
