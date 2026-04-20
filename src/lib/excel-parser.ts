@@ -442,8 +442,8 @@ export function enrichWithUsers(existing: AssetData, incoming: AssetData): Asset
         const val = incoming_row.raw[col] ?? "";
         if (val && !target.raw[col]) target.raw[col] = val;
       }
-      // Also enrich Name / Company if available
-      for (const col of ["Name", "Company"] as CanonicalField[]) {
+      // Also enrich Name / Company / Manager / Last logon date if available
+      for (const col of ["Name", "Company", "Manager", "Last logon date"] as CanonicalField[]) {
         const val = incoming_row.raw[col] ?? "";
         if (val && !target.raw[col]) target.raw[col] = val;
       }
