@@ -28,6 +28,18 @@ interface Release {
 
 const RELEASES: Release[] = [
   {
+    version: "0.3.1",
+    date: "2026-04-20",
+    title: "Reset filters button & unique-computername Total Assets",
+    added: [
+      "'Reset filters' button in the FilterBar (next to Reset mappings / Reset columns) that restores every filter to its app-level default in one click: clears search, Model, User, Manager, Source and KPI selection; restores the default Status set; turns Hide inactive back on; and sets Skanska computer? back to 'Skanska only'.",
+      "Tooltip on the Total Assets KPI card explaining what it counts.",
+    ],
+    changed: [
+      "Total Assets KPI now counts unique Computernames (case-insensitive, blanks excluded) instead of all rows. Users-only entries no longer inflate the count, and accidental duplicates from re-imports collapse to one entry.",
+    ],
+  },
+  {
     version: "0.3.0",
     date: "2026-04-20",
     title: "Username-as-master imports, Active/Skanska tracking, stale-logon highlighting & Manager filter",
