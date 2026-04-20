@@ -28,6 +28,17 @@ interface Release {
 
 const RELEASES: Release[] = [
   {
+    version: "0.4.1",
+    date: "2026-04-20",
+    title: "Handover state, Asset Management & User History tabs",
+    added: [
+      "New 'User keeps old device' option in Replace Device → Send old device to. Choose this for handover periods: the user keeps both the old and new computer for a while (to migrate data, finish setup), and the old device stays on its own row with status 'Deployed at user' and the same username — flagged automatically as a multi-device user.",
+      "New Asset Management tab: a lifecycle dashboard showing counts of devices In stock, Deployed at user, and Sent back to broker, plus a panel listing every user currently holding multiple devices (handover candidates). Search filters all sections at once.",
+      "New User History tab: a master/detail view with a searchable user list on the left and the selected user's current devices, past devices, and lifecycle events on the right.",
+      "Username and Computername cells in the Asset List are now clickable: click a username to open the User profile drawer, click a computername to open the Asset history drawer. Same drawers used everywhere — Audit Report, Asset Management, User History — so navigation feels consistent.",
+    ],
+  },
+  {
     version: "0.4.0",
     date: "2026-04-20",
     title: "Asset lifecycle management",
