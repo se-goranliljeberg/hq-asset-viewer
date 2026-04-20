@@ -20,6 +20,9 @@ import { cn } from "@/lib/utils";
 import { format, parseISO } from "date-fns";
 import { CommentCell } from "./CommentCell";
 import { parseEntries } from "@/lib/comment-log";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import type { ImportMeta } from "@/lib/import-meta";
+import { getImportedAt } from "@/lib/import-meta";
 
 interface Props {
   rows: AssetRow[];
@@ -32,6 +35,7 @@ interface Props {
   onUndoLast: (rowId: number) => void;
   selectedIds: Set<number>;
   onSelectionChange: (ids: Set<number>) => void;
+  importedAt?: ImportMeta;
 }
 
 const MIN_COL_W = 80;
@@ -43,8 +47,8 @@ const COMMENTS_COL = "Comments";
 
 // Canonical left-to-right display order.
 const CANONICAL_ORDER = [
-  "Username", "Name", "Computername", "Modell", "Last account activity",
-  "Status", "Warranty until", "AD Create.Date", "Company", "Email", "Department",
+  "Username", "Name", "Computername", "Modell", "Last account activity", "Last logon date",
+  "Status", "Warranty until", "AD Create.Date", "Company", "Email", "Department", "Manager",
 ] as const;
 
 // Virtual app-managed columns — always shown even when the source file
@@ -137,7 +141,7 @@ function InlineCell({ value, width, col, rowId, onCellEdit }: {
   );
 }
 
-export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellEdit, onUndoLast, selectedIds, onSelectionChange }: Props) {
+export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellEdit, onUndoLast, selectedIds, onSelectionChange, importedAt }: Props) {
   const parentRef = useRef<HTMLDivElement>(null);
 
   // Persisted column order
