@@ -133,15 +133,26 @@ export function AuditDashboard({ rows, edits }: Props) {
   }, [rows, edits, staleThreshold]);
 
   const filtered = useMemo(() => {
+    let result = users;
+    switch (filterKey) {
+      case "inactive":          result = result.filter((u) => !u.active); break;
+      case "leaverWithDevice":  result = result.filter((u) => u.isLeaverWithDevice); break;
+      case "withoutComputer":   result = result.filter((u) => u.computers.length === 0); break;
+      case "multiComputer":     result = result.filter((u) => u.computers.length > 1); break;
+      case "nonSkanska":        result = result.filter((u) => u.hasNonSkanska); break;
+      case "withExceptions":    result = result.filter((u) => u.exceptions.length > 0); break;
+      case "stale":             result = result.filter((u) => u.staleCount > 0); break;
+      case null: break;
+    }
     const q = search.trim().toLowerCase();
-    if (!q) return users;
-    return users.filter((u) =>
+    if (!q) return result;
+    return result.filter((u) =>
       u.displayName.toLowerCase().includes(q) ||
       u.computers.some((c) => c.toLowerCase().includes(q)) ||
       u.managers.some((m) => m.toLowerCase().includes(q)) ||
       u.departments.some((d) => d.toLowerCase().includes(q)),
     );
-  }, [users, search]);
+  }, [users, search, filterKey]);
 
   // KPI roll-ups (all user-centric).
   const totalUsers = users.length;
