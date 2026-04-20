@@ -81,7 +81,7 @@ export interface AuditEntry {
 }
 
 const ENTRY_RE =
-  /^Date:\s*(\d{4}-\d{2}-\d{2})(?:\s*\[([A-Z0-9]+)\])?\s*Change:\s*(.+)$/i;
+  /^Date:\s*(\d{4}-\d{2}-\d{2}(?:\s+\d{2}:\d{2})?)(?:\s*\[([A-Z0-9]+)\])?\s*Change:\s*(.+)$/i;
 const CHANGE_RE = /^(.+?)\s+from\s+"((?:[^"\\]|\\.)*)"\s+to\s+"((?:[^"\\]|\\.)*)"(\s*\(batch\))?\s*$/i;
 
 export function parseEntries(comment: string | undefined): AuditEntry[] {
