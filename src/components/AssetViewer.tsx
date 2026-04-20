@@ -44,12 +44,17 @@ import { ImportDebugger } from "./ImportDebugger";
 import { ColumnMappingDialog } from "./ColumnMappingDialog";
 import { InitialsPromptDialog } from "./InitialsPromptDialog";
 import { WhatsNewToast } from "./WhatsNewToast";
+import { MultiAssetImportDialog, type MultiAssetResolution } from "./MultiAssetImportDialog";
+import { AssetHistoryDrawer } from "./AssetHistoryDrawer";
+import { UserHistoryDrawer } from "./UserHistoryDrawer";
 import { APP_VERSION, useHasUnseenVersion } from "@/lib/version-state";
 import { loadImportMeta, saveImportMeta, mergeImportMeta, type ImportMeta } from "@/lib/import-meta";
 import { ImportConflictDialog, type ConflictResolutions } from "./ImportConflictDialog";
 import { loadStaleThreshold, saveStaleThreshold, DEFAULT_STALE_THRESHOLD_DAYS } from "@/lib/stale-config";
-import { effectiveSkanska, effectiveUserActive, effectiveExceptions, recordLifecycleEvent } from "@/lib/asset-edits";
-import type { LifecycleState } from "@/lib/asset-types";
+import { effectiveSkanska, effectiveUserActive, effectiveExceptions, recordLifecycleEvent, computeMultiComputerUsers } from "@/lib/asset-edits";
+import type { AssetRow as _AssetRow, LifecycleState } from "@/lib/asset-types";
+import { detectUserMultiAssetIncoming, type MultiAssetIncoming, migrateLifecycle } from "@/lib/excel-parser";
+import { isLifecycleMigrated, markLifecycleMigrated } from "@/lib/asset-store";
 
 import { toast } from "sonner";
 
