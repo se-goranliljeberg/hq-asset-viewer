@@ -1,109 +1,49 @@
 
-The user wants two documentation pages plus a Documentation link in the app navigation:
 
-1. **Technical/IT-Security documentation** — for IT/Security approval
-2. **User guide** — for end users using the app
+## Add "Manager" and "Last logon date" canonical columns
 
-Let me look at the routing and main layout to figure out where to add the link.
+Two new canonical columns, importable through the mapping dialog, with a hover tooltip on "Last logon date" showing when that specific value was imported.
 
-Key facts about this app (from context):
-- Client-side only Excel/CSV asset viewer
-- Data stored in browser localStorage only — no backend, no server, no auth
-- TanStack Start framework, deployed as static-ish on Cloudflare Worker
-- Parses .xlsx files locally with SheetJS (excel-parser.ts)
-- Canonical schema with manual column mapping
-- Inline edits, comments with audit log, CSV export
-- Privacy footer already says "Data stays on this device"
+### Schema changes (`src/lib/excel-parser.ts`)
 
-This is a meaningful documentation task — definitely warrants a plan.
+- Extend `CANONICAL_FIELDS` with `"Manager"` and `"Last logon date"` (placed after `"Department"` and `"Last account activity"` respectively, to keep related fields grouped).
+- Add `ALIASES` entries:
+  - **Manager**: `manager`, `reports to`, `chef`, `linemanager`, `line manager`, `supervisor`
+  - **Last logon date**: `last logon date`, `lastlogondate`, `last logon`, `lastlogon`, `last sign-in`, `lastsignin`
+- Add `FUZZY_SUBSTRINGS` for both (`"manager"`, `"supervisor"` / `"last logon"`, `"sign-in"`).
+- Important: since `"Last account activity"` previously also matched `last logon` aliases, switch its aliases/fuzzy to be more specific (`"last activity"`, `"account activity"`) so `Last logon date` wins for the obvious header. New imports of `"Last Logon Date"` will map to the new field; the old `Last account activity` still catches AD-style "last activity" headers.
+- Treat `"Last logon date"` as a date field in `parseSheetWithMapping` (add to `dateFields` set so `normalizeDate` is applied).
+- Include both new fields in `enrichWithUsers` enrichment loop (alongside `Name`, `Company`) so a users-file can populate them.
 
-## Plan
+### Per-cell import timestamps (new lightweight store)
 
-### New routes
+- New file `src/lib/import-meta.ts` exporting:
+  - `ImportMeta = Record<number /*rowId*/, Partial<Record<string /*field*/, string /*ISO timestamp*/>>>`
+  - `loadImportMeta()` / `saveImportMeta()` (localStorage key `hq_import_meta`)
+  - Helper `setImportedAt(meta, rowId, field, iso)` and `getImportedAt(meta, rowId, field)`
+- In `parseSheetWithMapping`, return per-row, per-field timestamps for any non-empty mapped value (focus on `Last logon date` and `Manager`, but stamp all canonical fields uniformly — cheap and future-proof). Add this to `ParseResult` as `importedAt: Record<number, Record<string, string>>`.
+- In `AssetViewer.tsx`, after a successful import / merge / enrich, merge the new `importedAt` entries (remapped to new row ids — same pattern already used for `seedEdits`) into the persisted `ImportMeta`.
 
-1. **`src/routes/documentation.tsx`** — landing page with two cards/links:
-   - "Technical & Security Documentation" → `/documentation/technical`
-   - "User Guide" → `/documentation/user-guide`
-   
-   Use a layout file `documentation.tsx` with `<Outlet />` + sidebar nav, plus an index route `documentation.index.tsx`.
+### Table display (`src/components/AssetTable.tsx`)
 
-   Actually simpler: one layout `documentation.tsx` with sidebar (Overview / Technical / User Guide), and three child routes:
-   - `documentation.index.tsx` — overview
-   - `documentation.technical.tsx`
-   - `documentation.user-guide.tsx`
+- Add `"Manager"` and `"Last logon date"` to `CANONICAL_ORDER`:
+  - `... "Department", "Manager", "Last account activity", "Last logon date", ...`
+- These are non-virtual (only show when present in source columns) — no change needed to `VIRTUAL_CANONICAL`.
+- For the `"Last logon date"` cell: wrap the `InlineCell` value in a `Tooltip` (existing shadcn `tooltip.tsx`) showing `Imported on <YYYY-MM-DD HH:mm>` when an `importedAt` entry exists. Pass `importedAt` map down from `AssetViewer` as a prop on `AssetTable`.
 
-### Navigation link
+### Mapping dialog (`src/components/ColumnMappingDialog.tsx`)
 
-In `src/routes/__root.tsx` (or wherever the top header lives — need to verify), add a "Documentation" link in the header next to existing navigation. Will check `__root.tsx` and `routes/index.tsx` to find the right spot.
+- No change required — the dialog already iterates `CANONICAL_FIELDS`, so the two new fields appear automatically in the "Map to" dropdown.
 
-### Content — Technical & Security doc
+### Files touched
 
-Sections:
-- **Overview** — purpose, what it does, what it doesn't do
-- **Architecture**
-  - Frontend: React 19 + TanStack Start + Vite 7 + Tailwind v4
-  - No backend, no database, no API calls to external services for data
-  - Hosted on Cloudflare Workers (static SSR shell)
-  - File parsing in-browser via SheetJS (xlsx)
-- **Data flow diagram** (ASCII): User file → Browser parse → localStorage → UI
-- **Data storage**
-  - All data in browser `localStorage` under keys: `hq_asset_data`, `hq_asset_edits`, `hq_asset_column_order`, `hq_asset_column_widths`, `hq_mapping_*`, `hq_canonical_migrated_v1`
-  - Data never leaves the user's device
-  - No telemetry, no analytics, no third-party trackers
-- **Security posture**
-  - No authentication required (no user accounts, no PII transmitted)
-  - No network requests with user data
-  - HTTPS-only via Cloudflare
-  - CSP / standard browser sandboxing applies
-  - No cookies set by app
-- **Privacy / GDPR**
-  - User controls all data; "Clear local data" button removes everything
-  - No data processor relationship — data never reaches Skanska/Lovable servers
-  - User responsible for not sharing exported CSVs improperly
-- **Dependencies** — list key npm packages (React, TanStack, xlsx, lucide, radix-ui, tailwind)
-- **Browser compatibility** — modern Chromium/Firefox/Safari, requires localStorage (~5-10MB)
-- **Limitations** — localStorage quota (~5MB), single-device, no multi-user collaboration
-- **Deployment** — Cloudflare Workers, build with `bun run build`
-- **Audit log** — every manual edit appends `Date: YYYY-MM-DD Change: …` to Comments column
-- **Export controls** — CSV export is user-initiated, downloads locally only
+- **Edit** `src/lib/excel-parser.ts` — add fields, aliases, fuzzy, date-handling, importedAt in `ParseResult`.
+- **Create** `src/lib/import-meta.ts` — persistent per-cell import timestamp store.
+- **Edit** `src/components/AssetViewer.tsx` — merge `importedAt` after import/merge/enrich (with id remap), pass map to `AssetTable`.
+- **Edit** `src/components/AssetTable.tsx` — add columns to canonical order, render tooltip on `Last logon date` cell.
 
-### Content — User Guide
+### Out of scope
 
-Sections:
-- **Getting Started** — drag/drop or click to upload .xlsx
-- **Sheet selection** — choose which sheet to import
-- **Column mapping** — explain the dialog, canonical fields, "Ignore"
-- **Importing additional files** — merging users-file with computers-file
-- **Table features** — sorting, filtering, search, KPI cards
-- **Editing data** — inline double-click edit on Status, Warranty, Comments; what gets logged
-- **Batch updates** — select multiple rows, change status at once
-- **Adding new rows** — manual entry
-- **Comments / audit log** — auto-append format, never overwritten
-- **Exceptions** — what each one means (Missing user, Missing computer, User without computer, etc.)
-- **Reset columns / mappings** — what they do
-- **Exporting** — CSV format, included columns
-- **Clear local data** — what gets deleted, no undo
-- **What to think about**
-  - Always re-import after major source-file changes
-  - Saved mappings remembered per file-header-set
-  - Updates to canonical schema may trigger one-time migration
-  - Single-device — your edits don't sync to other browsers
-- **Troubleshooting** — Import Debugger usage
+- Migration of existing stored data: old rows will simply have empty values for the two new columns and no import timestamp (tooltip just won't appear). No destructive change.
+- Changelog stub: bumping version is a separate `npm run bump` step the user can trigger.
 
-### Files to create/modify
-
-- **Create** `src/routes/documentation.tsx` — layout with sidebar nav + Outlet
-- **Create** `src/routes/documentation.index.tsx` — overview landing
-- **Create** `src/routes/documentation.technical.tsx` — IT/Security doc
-- **Create** `src/routes/documentation.user-guide.tsx` — user guide
-- **Modify** `src/routes/__root.tsx` or `src/routes/index.tsx` — add "Documentation" link in header (need to check which holds the header)
-
-### Visual style
-
-- Use existing shadcn `Card`, `Badge`, `Separator`, `ScrollArea` components
-- Match the existing dark theme / design tokens
-- Sidebar nav on left (sticky), content area on right
-- ASCII data-flow diagram in `<pre>` block for Technical doc
-- Anchor links / table of contents at top of each long doc
-
-No new dependencies needed.
