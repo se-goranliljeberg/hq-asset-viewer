@@ -236,6 +236,8 @@ export interface ParseResult {
   data: AssetData;
   seedEdits: Record<string, AssetEdits>;
   isUsersFile: boolean;
+  /** Per-row, per-field ISO timestamps recording when this value was imported. */
+  importedAt: Record<number, Record<string, string>>;
 }
 
 export function parseSheetWithMapping(
@@ -253,6 +255,7 @@ export function parseSheetWithMapping(
       data: { rows: [], columns: [], filename, loadedAt: new Date().toISOString() },
       seedEdits: {},
       isUsersFile: false,
+      importedAt: {},
     };
   }
 
@@ -273,6 +276,7 @@ export function parseSheetWithMapping(
   const dateFields: ReadonlySet<CanonicalField> = new Set<CanonicalField>([
     "AD Create.Date",
     "Last account activity",
+    "Last logon date",
   ]);
 
   // Detect users-only file: no Computername mapped, OR all rows empty in it.
