@@ -716,6 +716,12 @@ export function AssetViewer() {
     toast.info("Import cancelled.");
   }, []);
 
+  // Ref to the (later-declared) handleReplaceDevice — broken out so the
+  // multi-asset import handler can call it without a forward reference.
+  const handleReplaceDeviceRef = useRef<
+    ((rowId: number, source: ReplaceSource, oldDestination: OldDeviceDestination) => void) | null
+  >(null);
+
   // ─── Multi-asset import resolution ──────────────────────────────────────
   const handleMultiAssetApply = useCallback((resolutions: MultiAssetResolution[]) => {
     setMultiAssetOpen(false);
@@ -978,9 +984,7 @@ export function AssetViewer() {
     [data, setData, ensureInitials],
   );
 
-  // Ref bridge so handleMultiAssetApply (declared earlier) can invoke the
-  // latest handleReplaceDevice without creating a cyclic useCallback dependency.
-  const handleReplaceDeviceRef = useRef(handleReplaceDevice);
+  // Keep the forward ref in sync.
   useEffect(() => {
     handleReplaceDeviceRef.current = handleReplaceDevice;
   }, [handleReplaceDevice]);
