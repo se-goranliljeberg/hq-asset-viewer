@@ -668,3 +668,77 @@ export function detectUsernameConflicts(
   return { conflicts, nonConflicting };
 }
 
+// ---------- Multi-asset-per-user import detection ----------
+
+export interface MultiAssetIncoming {
+  /** Username (display spelling from existing row when available, else incoming). */
+  user: string;
+  /** All currently-assigned existing rows with this user that already have a Computername. */
+  existingRows: AssetRow[];
+  /** Incoming row that brings a *different* Computername for the same user. */
+  incomingRow: AssetRow;
+  /** Original index of the incoming row within `incoming.rows`. */
+  incomingIdx: number;
+}
+
+/**
+ * Find incoming rows that would give a user a *second* Computername — i.e. the
+ * user already owns at least one different Computername in the existing data.
+ *
+ * Run this AFTER `detectUsernameConflicts` has filtered out duplicate-username
+ * rows; the `incoming` you pass here should already be the non-conflicting set.
+ *
+ * Rows with no Computername are ignored (no asset to manage).
+ */
+export function detectUserMultiAssetIncoming(
+  existing: AssetData,
+  incoming: AssetData,
+): MultiAssetIncoming[] {
+  const byUser = new Map<string, AssetRow[]>();
+  for (const r of existing.rows) {
+    if (!r.computername.trim()) continue;
+    const u = (r.user ?? "").trim().toLowerCase();
+    if (!u) continue;
+    const list = byUser.get(u) ?? [];
+    list.push(r);
+    byUser.set(u, list);
+  }
+
+  const out: MultiAssetIncoming[] = [];
+  incoming.rows.forEach((row, idx) => {
+    const cn = row.computername.trim().toLowerCase();
+    const u = (row.user ?? "").trim().toLowerCase();
+    if (!cn || !u) return;
+    const owners = byUser.get(u);
+    if (!owners || owners.length === 0) return;
+    // Only flag if the incoming computername is genuinely new for this user.
+    const same = owners.some((r) => r.computername.trim().toLowerCase() === cn);
+    if (same) return;
+    out.push({
+      user: owners[0].user || row.user,
+      existingRows: owners,
+      incomingRow: row,
+      incomingIdx: idx,
+    });
+  });
+  return out;
+}
+
+// ---------- Lifecycle migration (assetKind backfill) ----------
+
+/**
+ * One-time backfill: stamp `assetKind` on persisted rows so the lifecycle
+ * code can distinguish physical-asset rows from user-only entries without
+ * re-parsing the source file. Idempotent — runs once per browser via the
+ * `hq_lifecycle_migrated_v1` flag in asset-store.
+ */
+export function migrateLifecycle(data: AssetData): { data: AssetData; changed: boolean } {
+  let changed = false;
+  const rows = data.rows.map((r) => {
+    if (r.assetKind) return r;
+    changed = true;
+    return { ...r, assetKind: r.computername.trim() ? ("computer" as const) : ("user-only" as const) };
+  });
+  return { data: changed ? { ...data, rows } : data, changed };
+}
+

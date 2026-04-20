@@ -39,7 +39,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Upload, Trash2, Download, ShieldCheck, RefreshCw, Plus, Bug, BookOpen } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { AddRowDialog } from "./AddRowDialog";
-import { ReplaceDeviceDialog } from "./ReplaceDeviceDialog";
+import { ReplaceDeviceDialog, type ReplaceSource, type OldDeviceDestination } from "./ReplaceDeviceDialog";
 import { ImportDebugger } from "./ImportDebugger";
 import { ColumnMappingDialog } from "./ColumnMappingDialog";
 import { InitialsPromptDialog } from "./InitialsPromptDialog";
@@ -48,7 +48,8 @@ import { APP_VERSION, useHasUnseenVersion } from "@/lib/version-state";
 import { loadImportMeta, saveImportMeta, mergeImportMeta, type ImportMeta } from "@/lib/import-meta";
 import { ImportConflictDialog, type ConflictResolutions } from "./ImportConflictDialog";
 import { loadStaleThreshold, saveStaleThreshold, DEFAULT_STALE_THRESHOLD_DAYS } from "@/lib/stale-config";
-import { effectiveSkanska, effectiveUserActive, effectiveExceptions } from "@/lib/asset-edits";
+import { effectiveSkanska, effectiveUserActive, effectiveExceptions, recordLifecycleEvent } from "@/lib/asset-edits";
+import type { LifecycleState } from "@/lib/asset-types";
 
 import { toast } from "sonner";
 
@@ -744,65 +745,123 @@ export function AssetViewer() {
   }, [data, setData, ensureInitials]);
 
   const handleReplaceDevice = useCallback(
-    (rowId: number, newComputername: string, newModell: string, warrantyUntil: string) => {
+    (rowId: number, source: ReplaceSource, oldDestination: OldDeviceDestination) => {
       if (!data) return;
       ensureInitials(() => {
         const target = data.rows.find((r) => r.id === rowId);
         if (!target) return;
+        const oldUser = target.user;
         const oldComputername = target.computername;
         const oldModell = target.modell;
+        const nowIso = new Date().toISOString();
 
-        // Find raw column keys (case-insensitive) so we update the displayed cells too.
-        const keys = Object.keys(target.raw);
-        const cnKey = keys.find((k) => k.toLowerCase() === "computername");
-        const modelKey = keys.find((k) => k.toLowerCase() === "modell");
-
-        const newRaw = { ...target.raw };
-        if (cnKey) newRaw[cnKey] = newComputername;
-        else newRaw["Computername"] = newComputername;
-        if (modelKey) newRaw[modelKey] = newModell;
-        else newRaw["Modell"] = newModell;
-
-        // Recompute exceptions for the relevant fields.
-        const remaining = target.exceptions.filter(
-          (e) => e !== "Missing Computername" && e !== "Missing Modell",
-        );
-        const exceptions = [...remaining];
-        if (!newComputername) exceptions.push("Missing Computername");
-        if (!newModell) exceptions.push("Missing Modell");
-
-        const updatedRow: AssetRow = {
+        // Build the "old asset" row: keep its computername/modell, clear user, set status.
+        const oldStatus: LifecycleState = oldDestination;
+        let oldRow = {
           ...target,
-          raw: newRaw,
-          computername: newComputername,
-          modell: newModell,
-          exceptions,
+          user: "",
+          raw: { ...target.raw, Username: "" },
         };
-        const updatedData: AssetData = {
-          ...data,
-          rows: data.rows.map((r) => (r.id === rowId ? updatedRow : r)),
-        };
-        setData(updatedData);
+        if (oldComputername.trim()) {
+          oldRow = recordLifecycleEvent(oldRow, {
+            from: "Deployed at user",
+            to: oldStatus,
+            prevUser: oldUser,
+            note: source.kind === "new"
+              ? `Replaced with new device ${source.computername}`
+              : `Replaced with in-stock device`,
+            at: nowIso,
+          });
+        }
 
-        // Append a single combined audit entry summarising the swap (incl. warranty if provided).
+        let updatedRows = data.rows.map((r) => (r.id === rowId ? oldRow : r));
+
+        // Build / pick the "new asset" row.
+        let newAssetId: number;
+        if (source.kind === "new") {
+          newAssetId = Math.max(...updatedRows.map((r) => r.id), 0) + 1;
+          let newRow = {
+            id: newAssetId,
+            computername: source.computername,
+            modell: source.modell,
+            user: oldUser,
+            raw: {
+              Computername: source.computername,
+              Modell: source.modell,
+              Username: oldUser,
+            } as Record<string, string>,
+            exceptions: [] as string[],
+            sourceFile: "Replace device",
+            assetKind: "computer" as const,
+          };
+          newRow = recordLifecycleEvent(newRow, {
+            to: "Deployed at user",
+            user: oldUser,
+            note: `New device replacing ${oldComputername || "(none)"}`,
+            at: nowIso,
+          });
+          updatedRows = [...updatedRows, newRow];
+        } else {
+          newAssetId = source.sourceRowId;
+          updatedRows = updatedRows.map((r) => {
+            if (r.id !== newAssetId) return r;
+            const reassigned = {
+              ...r,
+              user: oldUser,
+              raw: { ...r.raw, Username: oldUser },
+            };
+            return recordLifecycleEvent(reassigned, {
+              from: "In stock",
+              to: "Deployed at user",
+              user: oldUser,
+              note: `Re-assigned from stock to ${oldUser || "(no user)"}`,
+              at: nowIso,
+            });
+          });
+        }
+
+        setData({ ...data, rows: updatedRows });
+
+        // Update edits: old row gets new status; new row gets Deployed status (+ warranty if provided).
         setEditsState((prev) => {
-          const key = getEditKey(rowId);
-          const current = prev[key] ?? { status: "", warrantyUntil: "" };
-          let summary = `Device replaced: Computername from "${oldComputername || "(empty)"}" to "${newComputername}", Modell from "${oldModell || "(empty)"}" to "${newModell}"`;
-          let nextWarranty = current.warrantyUntil;
-          if (warrantyUntil) {
-            summary += `, Warranty until from "${current.warrantyUntil || "(empty)"}" to "${warrantyUntil}"`;
-            nextWarranty = warrantyUntil;
+          const next = { ...prev };
+          if (oldComputername.trim()) {
+            const oldKey = getEditKey(rowId);
+            const cur = next[oldKey] ?? { status: "", warrantyUntil: "" };
+            next[oldKey] = {
+              ...cur,
+              status: oldStatus,
+              comment: appendComment(
+                cur.comment,
+                `Device returned: user "${oldUser || "(none)"}" unassigned, status → "${oldStatus}"`,
+              ),
+            };
           }
-          const comment = appendComment(current.comment, summary);
-          const next = {
-            ...prev,
-            [key]: { ...current, warrantyUntil: nextWarranty, comment },
+          const newKey = getEditKey(newAssetId);
+          const curNew = next[newKey] ?? { status: "", warrantyUntil: "" };
+          const newWarranty = source.kind === "new" && source.warrantyUntil
+            ? source.warrantyUntil
+            : curNew.warrantyUntil;
+          next[newKey] = {
+            ...curNew,
+            status: "Deployed at user",
+            warrantyUntil: newWarranty,
+            comment: appendComment(
+              curNew.comment,
+              source.kind === "new"
+                ? `Device deployed to "${oldUser || "(no user)"}" (replacing ${oldComputername || "(none)"})`
+                : `Device re-deployed from stock to "${oldUser || "(no user)"}"`,
+            ),
           };
           saveEdits(next);
           return next;
         });
-        toast.success(`Replaced device for "${target.user || "user"}" → ${newComputername}`);
+
+        toast.success(
+          source.kind === "new"
+            ? `Replaced device for "${oldUser || "user"}" → ${source.computername}`
+            : `Re-assigned in-stock device to "${oldUser || "user"}"`,
+        );
       });
     },
     [data, setData, ensureInitials],
