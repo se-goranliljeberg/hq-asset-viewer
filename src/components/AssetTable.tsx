@@ -453,6 +453,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                     );
                   }
 
+                  if (col === COMMENTS_COL) {
                     const val = rowEdits?.comment ?? "";
                     const entries = parseEntries(val);
                     const canUndo = entries.some((e) => !e.isNote && !!e.field);
