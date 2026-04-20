@@ -118,17 +118,45 @@ export function AssetViewer() {
   const [search, setSearch] = useState("");
   const [modelFilter, setModelFilter] = useState<string[]>(() => loadFilterFromStorage(FILTER_STORAGE_KEYS.models, []));
   const [userFilter, setUserFilter] = useState<string[]>(() => loadFilterFromStorage(FILTER_STORAGE_KEYS.users, []));
+  const [managerFilter, setManagerFilter] = useState<string[]>(() => loadFilterFromStorage(FILTER_STORAGE_KEYS.managers, []));
   const [sourceFilter, setSourceFilter] = useState<string[]>(() => loadFilterFromStorage(FILTER_STORAGE_KEYS.sources, []));
   // Default: exclude "Sent back to broker" — show everything else (incl. no-status rows).
   const [statusFilter, setStatusFilter] = useState<string[]>(() =>
     loadFilterFromStorage(FILTER_STORAGE_KEYS.status, defaultStatusFilter),
   );
+  const [excludeInactive, setExcludeInactive] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    try {
+      const raw = localStorage.getItem(FILTER_STORAGE_KEYS.excludeInactive);
+      return raw === null ? true : raw === "true";
+    } catch { return true; }
+  });
+  const [skanskaFilter, setSkanskaFilter] = useState<SkanskaFilter>(() => {
+    if (typeof window === "undefined") return "skanska";
+    try {
+      const raw = localStorage.getItem(FILTER_STORAGE_KEYS.skanska);
+      if (raw === "all" || raw === "skanska" || raw === "non-skanska") return raw;
+    } catch { /* noop */ }
+    return "skanska";
+  });
+  const [staleThreshold, setStaleThresholdState] = useState<number>(() => loadStaleThreshold());
 
   // Persist filter selections so they survive reloads.
   useEffect(() => { saveFilterToStorage(FILTER_STORAGE_KEYS.models, modelFilter); }, [modelFilter]);
   useEffect(() => { saveFilterToStorage(FILTER_STORAGE_KEYS.users, userFilter); }, [userFilter]);
+  useEffect(() => { saveFilterToStorage(FILTER_STORAGE_KEYS.managers, managerFilter); }, [managerFilter]);
   useEffect(() => { saveFilterToStorage(FILTER_STORAGE_KEYS.sources, sourceFilter); }, [sourceFilter]);
   useEffect(() => { saveFilterToStorage(FILTER_STORAGE_KEYS.status, statusFilter); }, [statusFilter]);
+  useEffect(() => {
+    try { localStorage.setItem(FILTER_STORAGE_KEYS.excludeInactive, String(excludeInactive)); } catch { /* noop */ }
+  }, [excludeInactive]);
+  useEffect(() => {
+    try { localStorage.setItem(FILTER_STORAGE_KEYS.skanska, skanskaFilter); } catch { /* noop */ }
+  }, [skanskaFilter]);
+  const setStaleThreshold = useCallback((n: number) => {
+    setStaleThresholdState(n);
+    saveStaleThreshold(n);
+  }, []);
   const [exceptionsOnly, setExceptionsOnly] = useState(false);
   const [activeCard, setActiveCard] = useState<KpiKey | null>(null);
   const [sort, setSort] = useState<SortState>({ column: "", dir: null });
@@ -141,6 +169,11 @@ export function AssetViewer() {
   const [replaceOpen, setReplaceOpen] = useState(false);
   const [debugOpen, setDebugOpen] = useState(false);
   const [pendingIsUsersFile, setPendingIsUsersFile] = useState(false);
+
+  // Conflict resolution dialog state
+  const [conflictOpen, setConflictOpen] = useState(false);
+  const [pendingConflicts, setPendingConflicts] = useState<UsernameConflict[]>([]);
+  const pendingMode = useRef<"add" | "enrich">("add");
   const pendingBuffer = useRef<ArrayBuffer | null>(null);
   const pendingFilename = useRef("");
   const pendingSheet = useRef("");
