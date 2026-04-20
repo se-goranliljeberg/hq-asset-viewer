@@ -1021,8 +1021,18 @@ export function AssetViewer() {
     if (exceptionsOnly) {
       out.push({ key: "exceptions", group: "Show", value: "Exceptions only", onRemove: () => setExceptionsOnly(false) });
     }
+    for (const v of managerFilter) {
+      out.push({ key: `manager:${v}`, group: "Manager", value: v, onRemove: () => setManagerFilter((p) => p.filter((x) => x !== v)) });
+    }
+    if (excludeInactive) {
+      out.push({ key: "exclude-inactive", group: "Hide", value: "Inactive users", onRemove: () => setExcludeInactive(false) });
+    }
+    if (skanskaFilter !== "all") {
+      const label = skanskaFilter === "skanska" ? "Skanska only" : "Non-Skanska only";
+      out.push({ key: `skanska:${skanskaFilter}`, group: "Devices", value: label, onRemove: () => setSkanskaFilter("all") });
+    }
     return out;
-  }, [modelFilter, userFilter, sourceFilter, statusFilter, defaultStatusFilter, search, exceptionsOnly]);
+  }, [modelFilter, userFilter, sourceFilter, statusFilter, defaultStatusFilter, search, exceptionsOnly, managerFilter, excludeInactive, skanskaFilter]);
 
   return (
     <TooltipProvider>
@@ -1131,7 +1141,13 @@ export function AssetViewer() {
 
         {data ? (
           <div className="flex flex-1 flex-col gap-4 overflow-hidden px-6 py-4">
-            <KpiCards rows={rows} activeCard={activeCard} onCardClick={handleCardClick} />
+            <KpiCards
+              rows={rows}
+              edits={edits}
+              staleThreshold={staleThreshold}
+              activeCard={activeCard}
+              onCardClick={handleCardClick}
+            />
 
             <Tabs defaultValue="table" className="flex flex-1 flex-col overflow-hidden">
               <TabsList className="w-fit">
@@ -1144,10 +1160,14 @@ export function AssetViewer() {
                   search={search} onSearch={setSearch}
                   modelFilter={modelFilter} onModelFilter={setModelFilter}
                   userFilter={userFilter} onUserFilter={setUserFilter}
+                  managerFilter={managerFilter} onManagerFilter={setManagerFilter}
                   sourceFilter={sourceFilter} onSourceFilter={setSourceFilter}
                   statusFilter={statusFilter} onStatusFilter={setStatusFilter}
                   exceptionsOnly={exceptionsOnly} onExceptionsOnly={setExceptionsOnly}
-                  models={models} users={users} sources={sources}
+                  excludeInactive={excludeInactive} onExcludeInactive={setExcludeInactive}
+                  skanskaFilter={skanskaFilter} onSkanskaFilter={setSkanskaFilter}
+                  staleThreshold={staleThreshold} onStaleThreshold={setStaleThreshold}
+                  models={models} users={users} managers={managers} sources={sources}
                   statuses={[...STATUS_OPTIONS]}
                   onResetColumns={() => {
                     clearColumnOrder();
@@ -1240,6 +1260,7 @@ export function AssetViewer() {
                   selectedIds={selectedIds}
                   onSelectionChange={setSelectedIds}
                   importedAt={importMeta}
+                  staleThreshold={staleThreshold}
                 />
               </TabsContent>
 
