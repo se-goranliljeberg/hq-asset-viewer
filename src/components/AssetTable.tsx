@@ -1,12 +1,12 @@
 import { useRef, useState, useCallback, useMemo, useEffect } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { AssetRow, SortState } from "@/lib/asset-types";
-import type { AssetEdits } from "@/lib/asset-edits";
-import { STATUS_OPTIONS, getEditKey } from "@/lib/asset-edits";
+import type { AssetEdits, YesNo } from "@/lib/asset-edits";
+import { STATUS_OPTIONS, getEditKey, effectiveSkanska, effectiveUserActive } from "@/lib/asset-edits";
 import {
   loadColumnOrder, saveColumnOrder, loadColumnWidths, saveColumnWidths,
 } from "@/lib/asset-store";
-import { ArrowUp, ArrowDown, ArrowUpDown, GripVertical } from "lucide-react";
+import { ArrowUp, ArrowDown, ArrowUpDown, GripVertical, AlertTriangle } from "lucide-react";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -23,6 +23,7 @@ import { parseEntries } from "@/lib/comment-log";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { ImportMeta } from "@/lib/import-meta";
 import { getImportedAt } from "@/lib/import-meta";
+import { daysSince } from "@/lib/stale-config";
 
 interface Props {
   rows: AssetRow[];
@@ -36,6 +37,7 @@ interface Props {
   selectedIds: Set<number>;
   onSelectionChange: (ids: Set<number>) => void;
   importedAt?: ImportMeta;
+  staleThreshold: number;
 }
 
 const MIN_COL_W = 80;
@@ -49,11 +51,12 @@ const COMMENTS_COL = "Comments";
 const CANONICAL_ORDER = [
   "Username", "Name", "Computername", "Modell", "Last account activity", "Last logon date",
   "Status", "Warranty until", "AD Create.Date", "Company", "Email", "Department", "Manager",
+  "User Active?", "Skanska computer?",
 ] as const;
 
 // Virtual app-managed columns — always shown even when the source file
 // has no matching header. Their values come from the edits store, not row.raw.
-const VIRTUAL_CANONICAL = new Set<string>(["Status", "Warranty until"]);
+const VIRTUAL_CANONICAL = new Set<string>(["Status", "Warranty until", "User Active?", "Skanska computer?"]);
 const TAIL_COLS = ["Exceptions", COMMENTS_COL, "Source file"];
 
 // Build the default display column order: canonical fields in fixed order
@@ -141,7 +144,7 @@ function InlineCell({ value, width, col, rowId, onCellEdit }: {
   );
 }
 
-export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellEdit, onUndoLast, selectedIds, onSelectionChange, importedAt }: Props) {
+export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellEdit, onUndoLast, selectedIds, onSelectionChange, importedAt, staleThreshold }: Props) {
   const parentRef = useRef<HTMLDivElement>(null);
 
   // Persisted column order
