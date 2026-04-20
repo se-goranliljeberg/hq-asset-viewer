@@ -28,6 +28,23 @@ interface Release {
 
 const RELEASES: Release[] = [
   {
+    version: "0.4.0",
+    date: "2026-04-20",
+    title: "Asset lifecycle management",
+    added: [
+      "Computers are now first-class assets with their own lifecycle: In stock → Deployed at user → In stock → Sent back to broker. Each transition is timestamped, attributed to the editor's initials, and appended to a per-asset history log.",
+      "Replace Device flow now splits into two rows: the old asset stays as its own row (user cleared, status set to your choice of 'In stock' or 'Sent back to broker'), and the new asset becomes its own row deployed to the user.",
+      "Replace Device dialog has a new 'From In Stock' tab — pick an unassigned in-stock device instead of typing a brand-new one. Re-assigning records an 'In stock → Deployed at user' lifecycle event automatically.",
+      "Asset history side drawer: select a single row, click the new 'History' button, and see the full timeline (lifecycle events, comments, import stamps), the current user, and clickable previous-user chips that filter the table.",
+      "User profile drawer in the Audit Report: click any row in Per-User Detail to see the user's current devices, past devices, and lifecycle events touching them.",
+      "Multi-asset import prompt: when you import a Computername for a user that already owns one, you're asked per row whether to add it as an additional device, replace the existing one (with a destination choice), or skip it.",
+      "New 'User has multiple computers' exception is computed dataset-wide and surfaces in the Exceptions cell, KPI counters, and audit roll-up automatically.",
+    ],
+    changed: [
+      "AssetRow gained three optional fields (assetKind, history, previousUsers). Existing rows are migrated transparently on first load via the hq_lifecycle_migrated_v1 flag — no re-import needed.",
+    ],
+  },
+  {
     version: "0.3.4",
     date: "2026-04-20",
     title: "Clickable Audit Report KPIs",

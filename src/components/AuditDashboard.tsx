@@ -15,6 +15,7 @@ import { Search, UserX, Users, AlertTriangle, Monitor, Clock } from "lucide-reac
 interface Props {
   rows: AssetRow[];
   edits: Record<string, AssetEdits>;
+  onPickUser?: (userKey: string, userDisplay: string) => void;
 }
 
 interface UserSummary {
@@ -67,7 +68,7 @@ function maxDateString(a: string, b: string): string {
   return a > b ? a : b;
 }
 
-export function AuditDashboard({ rows, edits }: Props) {
+export function AuditDashboard({ rows, edits, onPickUser }: Props) {
   const [search, setSearch] = useState("");
   const [filterKey, setFilterKey] = useState<AuditFilterKey>(null);
   const staleThreshold = loadStaleThreshold();
@@ -343,7 +344,11 @@ export function AuditDashboard({ rows, edits }: Props) {
                     </TableRow>
                   )}
                   {filtered.map((u) => (
-                    <TableRow key={u.user}>
+                    <TableRow
+                      key={u.user}
+                      className={onPickUser ? "cursor-pointer hover:bg-muted/50" : ""}
+                      onClick={() => onPickUser?.(u.user, u.displayName)}
+                    >
                       <TableCell className="font-medium text-sm">{u.displayName}</TableCell>
                       <TableCell>
                         {u.active ? (

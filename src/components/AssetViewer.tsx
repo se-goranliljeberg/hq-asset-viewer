@@ -44,12 +44,17 @@ import { ImportDebugger } from "./ImportDebugger";
 import { ColumnMappingDialog } from "./ColumnMappingDialog";
 import { InitialsPromptDialog } from "./InitialsPromptDialog";
 import { WhatsNewToast } from "./WhatsNewToast";
+import { MultiAssetImportDialog, type MultiAssetResolution } from "./MultiAssetImportDialog";
+import { AssetHistoryDrawer } from "./AssetHistoryDrawer";
+import { UserHistoryDrawer } from "./UserHistoryDrawer";
 import { APP_VERSION, useHasUnseenVersion } from "@/lib/version-state";
 import { loadImportMeta, saveImportMeta, mergeImportMeta, type ImportMeta } from "@/lib/import-meta";
 import { ImportConflictDialog, type ConflictResolutions } from "./ImportConflictDialog";
 import { loadStaleThreshold, saveStaleThreshold, DEFAULT_STALE_THRESHOLD_DAYS } from "@/lib/stale-config";
-import { effectiveSkanska, effectiveUserActive, effectiveExceptions, recordLifecycleEvent } from "@/lib/asset-edits";
-import type { LifecycleState } from "@/lib/asset-types";
+import { effectiveSkanska, effectiveUserActive, effectiveExceptions, recordLifecycleEvent, computeMultiComputerUsers } from "@/lib/asset-edits";
+import type { AssetRow as _AssetRow, LifecycleState } from "@/lib/asset-types";
+import { detectUserMultiAssetIncoming, type MultiAssetIncoming, migrateLifecycle } from "@/lib/excel-parser";
+import { isLifecycleMigrated, markLifecycleMigrated } from "@/lib/asset-store";
 
 import { toast } from "sonner";
 
@@ -171,6 +176,19 @@ export function AssetViewer() {
   const [debugOpen, setDebugOpen] = useState(false);
   const [pendingIsUsersFile, setPendingIsUsersFile] = useState(false);
 
+  // Multi-asset import dialog state (incoming computer for an existing user).
+  const [multiAssetOpen, setMultiAssetOpen] = useState(false);
+  const [pendingMultiAssetCases, setPendingMultiAssetCases] = useState<MultiAssetIncoming[]>([]);
+
+  // Asset history drawer state.
+  const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
+  const [historyDrawerRow, setHistoryDrawerRow] = useState<_AssetRow | null>(null);
+
+  // User profile drawer state (opened from Audit Report).
+  const [userDrawerOpen, setUserDrawerOpen] = useState(false);
+  const [userDrawerKey, setUserDrawerKey] = useState<string | null>(null);
+  const [userDrawerDisplay, setUserDrawerDisplay] = useState("");
+
   // Conflict resolution dialog state
   const [conflictOpen, setConflictOpen] = useState(false);
   const [pendingConflicts, setPendingConflicts] = useState<UsernameConflict[]>([]);
@@ -245,6 +263,17 @@ export function AssetViewer() {
       setDataDirect(migrated);
       saveData(migrated);
       toast.success("Cleaned up legacy column duplicates.");
+    }
+  }, [hydrated, data, setDataDirect]);
+
+  // One-time lifecycle backfill: stamp `assetKind` on existing rows.
+  useEffect(() => {
+    if (!hydrated || !data || isLifecycleMigrated()) return;
+    const { data: migrated, changed } = migrateLifecycle(data);
+    markLifecycleMigrated();
+    if (changed) {
+      setDataDirect(migrated);
+      saveData(migrated);
     }
   }, [hydrated, data, setDataDirect]);
 
@@ -629,6 +658,14 @@ export function AssetViewer() {
         setConflictOpen(true);
         return;
       }
+      // No username conflicts — check for multi-asset cases (incoming computer
+      // for an existing user that already owns one).
+      const multiCases = detectUserMultiAssetIncoming(data, incoming);
+      if (multiCases.length > 0) {
+        setPendingMultiAssetCases(multiCases);
+        setMultiAssetOpen(true);
+        return;
+      }
       // No conflicts — proceed with merge as before.
       const merged = mergeData(data, incoming);
       setData(merged);
@@ -698,6 +735,105 @@ export function AssetViewer() {
     toast.info("Import cancelled.");
   }, []);
 
+  // Ref to the (later-declared) handleReplaceDevice — broken out so the
+  // multi-asset import handler can call it without a forward reference.
+  const handleReplaceDeviceRef = useRef<
+    ((rowId: number, source: ReplaceSource, oldDestination: OldDeviceDestination) => void) | null
+  >(null);
+
+  // ─── Multi-asset import resolution ──────────────────────────────────────
+  const handleMultiAssetApply = useCallback((resolutions: MultiAssetResolution[]) => {
+    setMultiAssetOpen(false);
+    if (!data || !pendingParsed.current) {
+      setPendingMultiAssetCases([]);
+      return;
+    }
+    const incoming = pendingParsed.current;
+    const dropIdx = new Set<number>();
+    const replacements: MultiAssetResolution[] = [];
+    for (const r of resolutions) {
+      if (r.choice === "skip") dropIdx.add(r.incomingIdx);
+      else if (r.choice === "replace") {
+        dropIdx.add(r.incomingIdx);
+        replacements.push(r);
+      }
+    }
+
+    if (replacements.length > 0) {
+      const replaceFn = handleReplaceDeviceRef.current;
+      if (replaceFn) {
+        ensureInitials(() => {
+          for (const r of replacements) {
+            const inc = incoming.rows[r.incomingIdx];
+            if (!inc || r.replaceExistingRowId === undefined) continue;
+            replaceFn(
+              r.replaceExistingRowId,
+              { kind: "new", computername: inc.computername, modell: inc.modell, warrantyUntil: "" },
+              (r.oldDestination ?? "In stock") as OldDeviceDestination,
+            );
+          }
+        });
+      }
+    }
+
+    const keptRows: AssetRow[] = [];
+    const keptOriginalIdx: number[] = [];
+    incoming.rows.forEach((row, i) => {
+      if (!dropIdx.has(i)) {
+        keptRows.push(row);
+        keptOriginalIdx.push(i);
+      }
+    });
+
+    if (keptRows.length === 0) {
+      pendingParsed.current = null;
+      pendingSeedEdits.current = {};
+      pendingImportedAt.current = {};
+      setPendingMultiAssetCases([]);
+      toast.success("Import resolved.");
+      return;
+    }
+
+    const newSeed: Record<string, AssetEdits> = {};
+    const newStamps: Record<number, Record<string, string>> = {};
+    keptOriginalIdx.forEach((origIdx, newIdx) => {
+      const s = pendingSeedEdits.current[String(origIdx)];
+      if (s) newSeed[String(newIdx)] = s;
+      const st = pendingImportedAt.current[origIdx];
+      if (st) newStamps[newIdx] = st;
+    });
+    pendingSeedEdits.current = newSeed;
+    pendingImportedAt.current = newStamps;
+
+    const filtered: AssetData = { ...incoming, rows: keptRows };
+    const merged = mergeData(data, filtered);
+    setData(merged);
+    const maxExistingId = data.rows.reduce((m, r) => Math.max(m, r.id), -1);
+    const remappedSeed: Record<string, AssetEdits> = {};
+    for (const [oldKey, seed] of Object.entries(pendingSeedEdits.current)) {
+      const oldIdx = Number(oldKey);
+      if (Number.isFinite(oldIdx)) remappedSeed[String(maxExistingId + 1 + oldIdx)] = seed;
+    }
+    applySeedEdits(remappedSeed);
+    mergeAndPersistMeta(remapImportedAt(filtered.rows.length, (i) => maxExistingId + 1 + i));
+    toast.success(`Added ${filtered.rows.length} rows; resolved ${replacements.length} replacement${replacements.length === 1 ? "" : "s"}.`);
+
+    pendingParsed.current = null;
+    pendingSeedEdits.current = {};
+    pendingImportedAt.current = {};
+    setPendingMultiAssetCases([]);
+  }, [data, setData, ensureInitials, applySeedEdits, mergeAndPersistMeta, remapImportedAt]);
+
+  const handleMultiAssetCancel = useCallback(() => {
+    setMultiAssetOpen(false);
+    setPendingMultiAssetCases([]);
+    pendingParsed.current = null;
+    pendingSeedEdits.current = {};
+    pendingImportedAt.current = {};
+    toast.info("Import cancelled.");
+  }, []);
+
+
 
 
   const handleAddRow = useCallback((raw: Record<string, string>, status: AssetStatus, warrantyUntil: string) => {
@@ -757,7 +893,7 @@ export function AssetViewer() {
 
         // Build the "old asset" row: keep its computername/modell, clear user, set status.
         const oldStatus: LifecycleState = oldDestination;
-        let oldRow = {
+        let oldRow: AssetRow = {
           ...target,
           user: "",
           raw: { ...target.raw, Username: "" },
@@ -780,7 +916,7 @@ export function AssetViewer() {
         let newAssetId: number;
         if (source.kind === "new") {
           newAssetId = Math.max(...updatedRows.map((r) => r.id), 0) + 1;
-          let newRow = {
+          let newRow: AssetRow = {
             id: newAssetId,
             computername: source.computername,
             modell: source.modell,
@@ -789,10 +925,10 @@ export function AssetViewer() {
               Computername: source.computername,
               Modell: source.modell,
               Username: oldUser,
-            } as Record<string, string>,
-            exceptions: [] as string[],
+            },
+            exceptions: [],
             sourceFile: "Replace device",
-            assetKind: "computer" as const,
+            assetKind: "computer",
           };
           newRow = recordLifecycleEvent(newRow, {
             to: "Deployed at user",
@@ -866,6 +1002,11 @@ export function AssetViewer() {
     },
     [data, setData, ensureInitials],
   );
+
+  // Keep the forward ref in sync.
+  useEffect(() => {
+    handleReplaceDeviceRef.current = handleReplaceDevice;
+  }, [handleReplaceDevice]);
 
   const openMappingFor = useCallback((buffer: ArrayBuffer, sheet: string, filename: string) => {
     pendingBuffer.current = buffer;
@@ -1330,13 +1471,27 @@ export function AssetViewer() {
                       </SelectContent>
                     </Select>
                     {selectedIds.size === 1 && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setReplaceOpen(true)}
-                      >
-                        <RefreshCw className="h-3.5 w-3.5 mr-1" /> Replace device
-                      </Button>
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setReplaceOpen(true)}
+                        >
+                          <RefreshCw className="h-3.5 w-3.5 mr-1" /> Replace device
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            const id = Array.from(selectedIds)[0];
+                            const r = rows.find((x) => x.id === id) ?? null;
+                            setHistoryDrawerRow(r);
+                            setHistoryDrawerOpen(true);
+                          }}
+                        >
+                          History
+                        </Button>
+                      </>
                     )}
                     <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>
                       Deselect all
@@ -1360,7 +1515,15 @@ export function AssetViewer() {
               </TabsContent>
 
               <TabsContent value="audit" className="flex-1 overflow-auto mt-4">
-                <AuditDashboard rows={rows} edits={edits} />
+                <AuditDashboard
+                  rows={rows}
+                  edits={edits}
+                  onPickUser={(key, display) => {
+                    setUserDrawerKey(key);
+                    setUserDrawerDisplay(display);
+                    setUserDrawerOpen(true);
+                  }}
+                />
               </TabsContent>
             </Tabs>
 
@@ -1462,7 +1625,38 @@ export function AssetViewer() {
               ? rows.find((r) => r.id === Array.from(selectedIds)[0]) ?? null
               : null
           }
+          allRows={rows}
+          edits={edits}
           onReplace={handleReplaceDevice}
+        />
+
+        <MultiAssetImportDialog
+          open={multiAssetOpen}
+          cases={pendingMultiAssetCases}
+          onApply={handleMultiAssetApply}
+          onCancel={handleMultiAssetCancel}
+        />
+
+        <AssetHistoryDrawer
+          open={historyDrawerOpen}
+          onOpenChange={setHistoryDrawerOpen}
+          row={historyDrawerRow}
+          edits={edits}
+          importedAt={importMeta}
+          onPickUser={(u) => {
+            setUserFilter([u]);
+            setHistoryDrawerOpen(false);
+            toast.success(`Filtered by user "${u}"`);
+          }}
+        />
+
+        <UserHistoryDrawer
+          open={userDrawerOpen}
+          onOpenChange={setUserDrawerOpen}
+          userKey={userDrawerKey}
+          userDisplay={userDrawerDisplay}
+          rows={rows}
+          edits={edits}
         />
 
         <ImportDebugger open={debugOpen} onOpenChange={setDebugOpen} />
