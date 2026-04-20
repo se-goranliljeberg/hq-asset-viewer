@@ -43,6 +43,7 @@ import { ColumnMappingDialog } from "./ColumnMappingDialog";
 import { InitialsPromptDialog } from "./InitialsPromptDialog";
 import { WhatsNewToast } from "./WhatsNewToast";
 import { APP_VERSION, useHasUnseenVersion } from "@/lib/version-state";
+import { loadImportMeta, saveImportMeta, mergeImportMeta, type ImportMeta } from "@/lib/import-meta";
 
 import { toast } from "sonner";
 
@@ -91,6 +92,17 @@ export function AssetViewer() {
   const [data, setData, hydrated, setDataDirect] = useStickyState();
   const hasUnseenVersion = useHasUnseenVersion();
   const [edits, setEditsState] = useState<Record<string, AssetEdits>>({});
+  const [importMeta, setImportMeta] = useState<ImportMeta>({});
+
+  useEffect(() => { setImportMeta(loadImportMeta()); }, []);
+
+  const mergeAndPersistMeta = useCallback((incoming: ImportMeta) => {
+    setImportMeta((prev) => {
+      const next = mergeImportMeta(prev, incoming);
+      saveImportMeta(next);
+      return next;
+    });
+  }, []);
   const defaultStatusFilter = useMemo(
     () => [STATUS_NONE_TOKEN, ...STATUS_OPTIONS].filter((s) => s !== "Sent back to broker"),
     [],
