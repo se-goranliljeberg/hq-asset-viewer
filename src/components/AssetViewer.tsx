@@ -928,6 +928,7 @@ export function AssetViewer() {
                   onUndoLast={handleUndoLast}
                   selectedIds={selectedIds}
                   onSelectionChange={setSelectedIds}
+                  importedAt={importMeta}
                 />
               </TabsContent>
 
