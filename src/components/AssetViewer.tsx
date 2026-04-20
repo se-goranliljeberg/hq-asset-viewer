@@ -520,7 +520,73 @@ export function AssetViewer() {
     });
   }, [data, setData, ensureInitials]);
 
-  const openMappingFor = useCallback((buffer: ArrayBuffer, sheet: string, filename: string) => {
+  const handleReplaceDevice = useCallback(
+    (rowId: number, newComputername: string, newModell: string, warrantyUntil: string) => {
+      if (!data) return;
+      ensureInitials(() => {
+        const target = data.rows.find((r) => r.id === rowId);
+        if (!target) return;
+        const oldComputername = target.computername;
+        const oldModell = target.modell;
+
+        // Find raw column keys (case-insensitive) so we update the displayed cells too.
+        const keys = Object.keys(target.raw);
+        const cnKey = keys.find((k) => k.toLowerCase() === "computername");
+        const modelKey = keys.find((k) => k.toLowerCase() === "modell");
+
+        const newRaw = { ...target.raw };
+        if (cnKey) newRaw[cnKey] = newComputername;
+        else newRaw["Computername"] = newComputername;
+        if (modelKey) newRaw[modelKey] = newModell;
+        else newRaw["Modell"] = newModell;
+
+        // Recompute exceptions for the relevant fields.
+        const remaining = target.exceptions.filter(
+          (e) => e !== "Missing Computername" && e !== "Missing Modell",
+        );
+        const exceptions = [...remaining];
+        if (!newComputername) exceptions.push("Missing Computername");
+        if (!newModell) exceptions.push("Missing Modell");
+
+        const updatedRow: AssetRow = {
+          ...target,
+          raw: newRaw,
+          computername: newComputername,
+          modell: newModell,
+          exceptions,
+        };
+        const updatedData: AssetData = {
+          ...data,
+          rows: data.rows.map((r) => (r.id === rowId ? updatedRow : r)),
+        };
+        setData(updatedData);
+
+        // Append a single audit entry summarising the swap, plus a warranty entry if provided.
+        setEditsState((prev) => {
+          const key = getEditKey(rowId);
+          const current = prev[key] ?? { status: "", warrantyUntil: "" };
+          const summary = `Device replaced: Computername from "${oldComputername || "(empty)"}" to "${newComputername}", Modell from "${oldModell || "(empty)"}" to "${newModell}"`;
+          let comment = appendComment(current.comment, summary);
+          let nextWarranty = current.warrantyUntil;
+          if (warrantyUntil) {
+            comment = appendComment(
+              comment,
+              describeChange("Warranty until", current.warrantyUntil ?? "", warrantyUntil),
+            );
+            nextWarranty = warrantyUntil;
+          }
+          const next = {
+            ...prev,
+            [key]: { ...current, warrantyUntil: nextWarranty, comment },
+          };
+          saveEdits(next);
+          return next;
+        });
+        toast.success(`Replaced device for "${target.user || "user"}" → ${newComputername}`);
+      });
+    },
+    [data, setData, ensureInitials],
+  );
     pendingBuffer.current = buffer;
     pendingFilename.current = filename;
     pendingSheet.current = sheet;
