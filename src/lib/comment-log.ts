@@ -44,11 +44,15 @@ export function appendComment(
   change: string,
   initials?: string,
 ): string {
-  const today = new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10);
+  const hh = String(now.getHours()).padStart(2, "0");
+  const mm = String(now.getMinutes()).padStart(2, "0");
+  const stamp = `${today} ${hh}:${mm}`;
   const ini = (initials ?? getStoredInitials()).trim().toUpperCase();
   const entry = ini
-    ? `Date: ${today} [${ini}] Change: ${change}`
-    : `Date: ${today} Change: ${change}`;
+    ? `Date: ${stamp} [${ini}] Change: ${change}`
+    : `Date: ${stamp} Change: ${change}`;
   const prev = (existing ?? "").trim();
   return prev ? `${prev}${SEP}${entry}` : entry;
 }
@@ -77,7 +81,7 @@ export interface AuditEntry {
 }
 
 const ENTRY_RE =
-  /^Date:\s*(\d{4}-\d{2}-\d{2})(?:\s*\[([A-Z0-9]+)\])?\s*Change:\s*(.+)$/i;
+  /^Date:\s*(\d{4}-\d{2}-\d{2}(?:\s+\d{2}:\d{2})?)(?:\s*\[([A-Z0-9]+)\])?\s*Change:\s*(.+)$/i;
 const CHANGE_RE = /^(.+?)\s+from\s+"((?:[^"\\]|\\.)*)"\s+to\s+"((?:[^"\\]|\\.)*)"(\s*\(batch\))?\s*$/i;
 
 export function parseEntries(comment: string | undefined): AuditEntry[] {
