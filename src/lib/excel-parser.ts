@@ -569,3 +569,102 @@ export function migrateToCanonical(data: AssetData): { data: AssetData; changed:
     changed: true,
   };
 }
+
+// ---------- Username-as-master conflict detection ----------
+
+export interface FieldDiff {
+  field: string;
+  oldVal: string;
+  newVal: string;
+}
+
+export interface UsernameConflict {
+  existingRow: AssetRow;
+  incomingRow: AssetRow;
+  /** Original index in `incoming.rows` — used by callers to look up seedEdits. */
+  incomingIdx: number;
+  diffs: FieldDiff[];
+}
+
+export interface ConflictDetectionResult {
+  conflicts: UsernameConflict[];
+  /** Incoming rows (with their original index) that had no username match. */
+  nonConflicting: Array<{ row: AssetRow; incomingIdx: number }>;
+}
+
+/**
+ * Match incoming rows against existing rows by Username (case-insensitive, trimmed).
+ * Rows without a username on either side don't participate — they fall through
+ * to the existing merge/enrich path.
+ *
+ * The diffs list contains only fields where existing !== incoming AND incoming !== "".
+ */
+export function detectUsernameConflicts(
+  existing: AssetData,
+  incoming: AssetData,
+  seedEdits: Record<string, AssetEdits> = {},
+  existingEdits: Record<string, AssetEdits> = {},
+): ConflictDetectionResult {
+  const byUser = new Map<string, AssetRow>();
+  for (const r of existing.rows) {
+    const u = r.user.trim().toLowerCase();
+    if (u) byUser.set(u, r);
+  }
+
+  const conflicts: UsernameConflict[] = [];
+  const nonConflicting: Array<{ row: AssetRow; incomingIdx: number }> = [];
+
+  incoming.rows.forEach((row, idx) => {
+    const u = row.user.trim().toLowerCase();
+    const match = u ? byUser.get(u) : undefined;
+    if (!match) {
+      nonConflicting.push({ row, incomingIdx: idx });
+      return;
+    }
+    const incomingSeed = seedEdits[String(idx)];
+    const existingSeed = existingEdits[String(match.id)];
+    const diffs: FieldDiff[] = [];
+
+    // Canonical raw fields (Username already matched, skip it).
+    for (const f of CANONICAL_FIELDS) {
+      if (f === "Username") continue;
+      // Status / Warranty / Active / Skanska come from seedEdits, not raw.
+      if (f === "Status") {
+        const newVal = incomingSeed?.status ?? "";
+        const oldVal = existingSeed?.status ?? "";
+        if (newVal && newVal !== oldVal) diffs.push({ field: f, oldVal, newVal });
+        continue;
+      }
+      if (f === "Warranty until") {
+        const newVal = incomingSeed?.warrantyUntil ?? "";
+        const oldVal = existingSeed?.warrantyUntil ?? "";
+        if (newVal && newVal !== oldVal) diffs.push({ field: f, oldVal, newVal });
+        continue;
+      }
+      if (f === "User Active?") {
+        const newVal = incomingSeed?.userActive ?? "";
+        const oldVal = existingSeed?.userActive ?? "";
+        if (newVal && newVal !== oldVal) diffs.push({ field: f, oldVal, newVal });
+        continue;
+      }
+      if (f === "Skanska computer?") {
+        const newVal = incomingSeed?.skanskaComputer ?? "";
+        const oldVal = existingSeed?.skanskaComputer ?? "";
+        if (newVal && newVal !== oldVal) diffs.push({ field: f, oldVal, newVal });
+        continue;
+      }
+      const newVal = (row.raw[f] ?? "").trim();
+      const oldVal = (match.raw[f] ?? "").trim();
+      if (newVal && newVal !== oldVal) diffs.push({ field: f, oldVal, newVal });
+    }
+
+    if (diffs.length > 0) {
+      conflicts.push({ existingRow: match, incomingRow: row, incomingIdx: idx, diffs });
+    }
+    // If usernames match but no diffs, treat as fully-handled: do NOT add as new row.
+    // (We silently skip duplicates with no new info.)
+  });
+
+  return { conflicts, nonConflicting };
+}
+
