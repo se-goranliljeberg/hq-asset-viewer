@@ -978,6 +978,13 @@ export function AssetViewer() {
     [data, setData, ensureInitials],
   );
 
+  // Ref bridge so handleMultiAssetApply (declared earlier) can invoke the
+  // latest handleReplaceDevice without creating a cyclic useCallback dependency.
+  const handleReplaceDeviceRef = useRef(handleReplaceDevice);
+  useEffect(() => {
+    handleReplaceDeviceRef.current = handleReplaceDevice;
+  }, [handleReplaceDevice]);
+
   const openMappingFor = useCallback((buffer: ArrayBuffer, sheet: string, filename: string) => {
     pendingBuffer.current = buffer;
     pendingFilename.current = filename;
