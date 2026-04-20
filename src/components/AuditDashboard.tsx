@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import type { AssetRow } from "@/lib/asset-types";
 import type { AssetEdits } from "@/lib/asset-edits";
-import { getEditKey, effectiveUserActive, effectiveSkanska } from "@/lib/asset-edits";
+import { getEditKey, effectiveUserActive, effectiveSkanska, effectiveExceptions } from "@/lib/asset-edits";
 import { isStale, loadStaleThreshold } from "@/lib/stale-config";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -98,7 +98,7 @@ export function AuditDashboard({ rows, edits }: Props) {
       entry.managers.push(r.raw["Manager"] ?? "");
       entry.departments.push(r.raw["Department"] ?? "");
       entry.companies.push(r.raw["Company"] ?? "");
-      entry.exceptions.push(...r.exceptions);
+      entry.exceptions.push(...effectiveExceptions(r, e));
       entry.lastLogon = maxDateString(entry.lastLogon, r.raw["Last logon date"] ?? "");
       if (isInactive) entry.active = false;
       if (isNonSkanska) entry.hasNonSkanska = true;

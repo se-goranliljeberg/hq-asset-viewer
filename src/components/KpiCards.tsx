@@ -1,6 +1,6 @@
 import type { AssetRow } from "@/lib/asset-types";
 import type { AssetEdits } from "@/lib/asset-edits";
-import { getEditKey } from "@/lib/asset-edits";
+import { getEditKey, effectiveExceptions } from "@/lib/asset-edits";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Monitor, Users, Cpu, AlertTriangle, Clock } from "lucide-react";
@@ -29,11 +29,10 @@ export function KpiCards({ rows, edits, staleThreshold, activeCard, onCardClick 
   const total = uniqueComputers;
   const uniqueUsers = new Set(rows.map((r) => r.user.toLowerCase()).filter(Boolean)).size;
   const uniqueModels = new Set(rows.map((r) => r.modell.toLowerCase()).filter(Boolean)).size;
-  const exceptions = rows.filter((r) => r.exceptions.length > 0).length;
+  const exceptions = rows.filter(
+    (r) => effectiveExceptions(r, edits[getEditKey(r.id)]).length > 0,
+  ).length;
   const stale = rows.filter((r) => isStale(r.raw["Last logon date"] ?? "", staleThreshold)).length;
-
-  // Suppress lint: edits intentionally accepted for future per-row KPI logic.
-  void edits; void getEditKey;
 
   const cards: { key: KpiKey; label: string; value: number; icon: typeof Monitor; color: string; tooltip: string }[] = [
     {
