@@ -516,6 +516,27 @@ export function AssetViewer() {
     setImportModeOpen(false);
     if (pendingParsed.current && data) {
       const incoming = pendingParsed.current;
+      // Detect username conflicts first.
+      const { conflicts, nonConflicting } = detectUsernameConflicts(
+        data, incoming, pendingSeedEdits.current, edits,
+      );
+      if (conflicts.length > 0) {
+        pendingParsed.current = { ...incoming, rows: nonConflicting.map((n) => n.row) };
+        const newSeed: Record<string, AssetEdits> = {};
+        const newStamps: Record<number, Record<string, string>> = {};
+        nonConflicting.forEach((n, newIdx) => {
+          const oldSeed = pendingSeedEdits.current[String(n.incomingIdx)];
+          if (oldSeed) newSeed[String(newIdx)] = oldSeed;
+          const oldStamps = pendingImportedAt.current[n.incomingIdx];
+          if (oldStamps) newStamps[newIdx] = oldStamps;
+        });
+        pendingSeedEdits.current = newSeed;
+        pendingImportedAt.current = newStamps;
+        setPendingConflicts(conflicts);
+        pendingMode.current = "enrich";
+        setConflictOpen(true);
+        return;
+      }
       const merged = enrichWithUsers(data, incoming);
       setData(merged);
       // Enrich keeps existing row ids; only unmatched incoming rows are appended
@@ -560,7 +581,7 @@ export function AssetViewer() {
       pendingImportedAt.current = {};
       setPendingIsUsersFile(false);
     }
-  }, [data, setData, applySeedEdits, mergeAndPersistMeta, remapImportedAt]);
+  }, [data, edits, setData, applySeedEdits, mergeAndPersistMeta, remapImportedAt]);
 
   const handleImportReplace = useCallback(() => {
     setImportModeOpen(false);
@@ -984,7 +1005,7 @@ export function AssetViewer() {
       });
     }
     return result;
-  }, [rows, columns, search, modelFilter, userFilter, sourceFilter, statusFilter, exceptionsOnly, activeCard, sort, edits]);
+  }, [rows, columns, search, modelFilter, userFilter, managerFilter, sourceFilter, statusFilter, exceptionsOnly, excludeInactive, skanskaFilter, activeCard, sort, edits, staleThreshold]);
 
   const activeChips = useMemo<FilterChip[]>(() => {
     const out: FilterChip[] = [];
@@ -1021,8 +1042,18 @@ export function AssetViewer() {
     if (exceptionsOnly) {
       out.push({ key: "exceptions", group: "Show", value: "Exceptions only", onRemove: () => setExceptionsOnly(false) });
     }
+    for (const v of managerFilter) {
+      out.push({ key: `manager:${v}`, group: "Manager", value: v, onRemove: () => setManagerFilter((p) => p.filter((x) => x !== v)) });
+    }
+    if (excludeInactive) {
+      out.push({ key: "exclude-inactive", group: "Hide", value: "Inactive users", onRemove: () => setExcludeInactive(false) });
+    }
+    if (skanskaFilter !== "all") {
+      const label = skanskaFilter === "skanska" ? "Skanska only" : "Non-Skanska only";
+      out.push({ key: `skanska:${skanskaFilter}`, group: "Devices", value: label, onRemove: () => setSkanskaFilter("all") });
+    }
     return out;
-  }, [modelFilter, userFilter, sourceFilter, statusFilter, defaultStatusFilter, search, exceptionsOnly]);
+  }, [modelFilter, userFilter, sourceFilter, statusFilter, defaultStatusFilter, search, exceptionsOnly, managerFilter, excludeInactive, skanskaFilter]);
 
   return (
     <TooltipProvider>
@@ -1131,7 +1162,13 @@ export function AssetViewer() {
 
         {data ? (
           <div className="flex flex-1 flex-col gap-4 overflow-hidden px-6 py-4">
-            <KpiCards rows={rows} activeCard={activeCard} onCardClick={handleCardClick} />
+            <KpiCards
+              rows={rows}
+              edits={edits}
+              staleThreshold={staleThreshold}
+              activeCard={activeCard}
+              onCardClick={handleCardClick}
+            />
 
             <Tabs defaultValue="table" className="flex flex-1 flex-col overflow-hidden">
               <TabsList className="w-fit">
@@ -1144,10 +1181,14 @@ export function AssetViewer() {
                   search={search} onSearch={setSearch}
                   modelFilter={modelFilter} onModelFilter={setModelFilter}
                   userFilter={userFilter} onUserFilter={setUserFilter}
+                  managerFilter={managerFilter} onManagerFilter={setManagerFilter}
                   sourceFilter={sourceFilter} onSourceFilter={setSourceFilter}
                   statusFilter={statusFilter} onStatusFilter={setStatusFilter}
                   exceptionsOnly={exceptionsOnly} onExceptionsOnly={setExceptionsOnly}
-                  models={models} users={users} sources={sources}
+                  excludeInactive={excludeInactive} onExcludeInactive={setExcludeInactive}
+                  skanskaFilter={skanskaFilter} onSkanskaFilter={setSkanskaFilter}
+                  staleThreshold={staleThreshold} onStaleThreshold={setStaleThreshold}
+                  models={models} users={users} managers={managers} sources={sources}
                   statuses={[...STATUS_OPTIONS]}
                   onResetColumns={() => {
                     clearColumnOrder();
@@ -1240,6 +1281,7 @@ export function AssetViewer() {
                   selectedIds={selectedIds}
                   onSelectionChange={setSelectedIds}
                   importedAt={importMeta}
+                  staleThreshold={staleThreshold}
                 />
               </TabsContent>
 
@@ -1360,6 +1402,13 @@ export function AssetViewer() {
           initialMapping={mappingInitial}
           onApply={handleMappingApply}
           onCancel={handleMappingCancel}
+        />
+
+        <ImportConflictDialog
+          open={conflictOpen}
+          conflicts={pendingConflicts}
+          onApply={handleConflictApply}
+          onCancel={handleConflictCancel}
         />
 
         <WhatsNewToast />
