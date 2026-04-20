@@ -1106,6 +1106,17 @@ export function AssetViewer() {
           onSave={handleAddRow}
         />
 
+        <ReplaceDeviceDialog
+          open={replaceOpen}
+          onOpenChange={setReplaceOpen}
+          row={
+            selectedIds.size === 1
+              ? rows.find((r) => r.id === Array.from(selectedIds)[0]) ?? null
+              : null
+          }
+          onReplace={handleReplaceDevice}
+        />
+
         <ImportDebugger open={debugOpen} onOpenChange={setDebugOpen} />
 
         <ColumnMappingDialog
