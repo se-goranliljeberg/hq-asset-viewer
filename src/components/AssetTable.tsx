@@ -2,7 +2,7 @@ import { useRef, useState, useCallback, useMemo, useEffect } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { AssetRow, SortState } from "@/lib/asset-types";
 import type { AssetEdits, YesNo } from "@/lib/asset-edits";
-import { STATUS_OPTIONS, getEditKey, effectiveSkanska, effectiveUserActive } from "@/lib/asset-edits";
+import { STATUS_OPTIONS, getEditKey, effectiveSkanska, effectiveUserActive, effectiveExceptions } from "@/lib/asset-edits";
 import {
   loadColumnOrder, saveColumnOrder, loadColumnWidths, saveColumnWidths,
 } from "@/lib/asset-store";
@@ -326,9 +326,10 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
           {virtualizer.getVirtualItems().map((vRow) => {
             const row = rows[vRow.index];
             const isOdd = vRow.index % 2 === 1;
-            const hasEx = row.exceptions.length > 0;
             const editKey = getEditKey(row.id);
             const rowEdits = edits[editKey];
+            const rowEffectiveExceptions = effectiveExceptions(row, rowEdits);
+            const hasEx = rowEffectiveExceptions.length > 0;
             const isSelected = selectedIds.has(row.id);
 
             return (
@@ -472,7 +473,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
 
                   // Exceptions and Source file are read-only
                   if (NON_EDITABLE_COLS.has(col)) {
-                    const val = col === "Exceptions" ? row.exceptions.join(", ") : row.sourceFile;
+                    const val = col === "Exceptions" ? rowEffectiveExceptions.join(", ") : row.sourceFile;
                     return (
                       <div
                         key={col}

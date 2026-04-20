@@ -1,6 +1,6 @@
 import type { AssetRow } from "./asset-types";
 import type { AssetEdits } from "./asset-edits";
-import { getEditKey } from "./asset-edits";
+import { getEditKey, effectiveExceptions } from "./asset-edits";
 
 export function exportCSV(
   rows: AssetRow[],
@@ -21,7 +21,7 @@ export function exportCSV(
     const e = edits[getEditKey(r.id)];
     cells.push(escape(e?.status ?? ""));
     cells.push(escape(e?.warrantyUntil ?? ""));
-    cells.push(escape(r.exceptions.join("; ")));
+    cells.push(escape(effectiveExceptions(r, e).join("; ")));
     cells.push(escape(e?.comment ?? ""));
     cells.push(escape(r.sourceFile ?? ""));
     return cells.join(",");
