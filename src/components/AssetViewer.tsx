@@ -882,7 +882,7 @@ export function AssetViewer() {
     setManagerFilter([]);
     setStatusFilter(defaultStatusFilter);
     setExceptionsOnly(false);
-    setExcludeInactive(true);
+    setExcludeInactive(false);
     setSkanskaFilter("skanska");
     setSort({ column: "", dir: null });
     setConfirmClear(false);
@@ -910,7 +910,7 @@ export function AssetViewer() {
     setSourceFilter([]);
     setStatusFilter(defaultStatusFilter);
     setExceptionsOnly(false);
-    setExcludeInactive(true);
+    setExcludeInactive(false);
     setSkanskaFilter("skanska");
     setActiveCard(null);
     toast.success("Filters reset to defaults.");
