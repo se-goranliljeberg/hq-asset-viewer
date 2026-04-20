@@ -35,7 +35,7 @@ export function KpiCards({ rows, edits, staleThreshold, activeCard, onCardClick 
   // Suppress lint: edits intentionally accepted for future per-row KPI logic.
   void edits; void getEditKey;
 
-  const cards: { key: KpiKey; label: string; value: number; icon: typeof Monitor; color: string; tooltip?: string }[] = [
+  const cards: { key: KpiKey; label: string; value: number; icon: typeof Monitor; color: string; tooltip: string }[] = [
     {
       key: "total",
       label: "Total Assets",
@@ -43,12 +43,44 @@ export function KpiCards({ rows, edits, staleThreshold, activeCard, onCardClick 
       icon: Monitor,
       color: "text-primary",
       tooltip:
-        "Unique Computernames (case-insensitive). Rows without a computername — e.g. users-only entries — are excluded, and duplicate rows referring to the same machine are counted once.",
+        "Unique Computernames (case-insensitive). Rows without a computername — e.g. users-only entries — are excluded, and duplicate rows referring to the same machine are counted once. Click to filter the table to all rows.",
     },
-    { key: "users", label: "Unique Users", value: uniqueUsers, icon: Users, color: "text-chart-2" },
-    { key: "models", label: "Unique Models", value: uniqueModels, icon: Cpu, color: "text-chart-3" },
-    { key: "exceptions", label: "Exceptions", value: exceptions, icon: AlertTriangle, color: "text-destructive" },
-    { key: "stale", label: `Stale (>${staleThreshold}d)`, value: stale, icon: Clock, color: "text-amber-500" },
+    {
+      key: "users",
+      label: "Unique Users",
+      value: uniqueUsers,
+      icon: Users,
+      color: "text-chart-2",
+      tooltip:
+        "Distinct people in the User column (case-insensitive). Each person is counted once even if they own several assets. Click to filter the table to all rows.",
+    },
+    {
+      key: "models",
+      label: "Unique Models",
+      value: uniqueModels,
+      icon: Cpu,
+      color: "text-chart-3",
+      tooltip:
+        "Distinct hardware models in the Modell column (case-insensitive). Useful for fleet diversity at a glance. Click to filter the table to all rows.",
+    },
+    {
+      key: "exceptions",
+      label: "Exceptions",
+      value: exceptions,
+      icon: AlertTriangle,
+      color: "text-destructive",
+      tooltip:
+        "Rows with at least one data-quality flag (e.g. Missing user, Missing computer, Inactive user, Warranty expired, Inactive >90 days). Click to filter the table to exception rows only.",
+    },
+    {
+      key: "stale",
+      label: `Stale (>${staleThreshold}d)`,
+      value: stale,
+      icon: Clock,
+      color: "text-amber-500",
+      tooltip:
+        `Accounts whose 'Last logon date' is older than ${staleThreshold} days — likely candidates for cleanup or off-boarding. Threshold is configurable in the FilterBar ("Stale > N d") and persisted per browser. Click to filter the table to stale accounts only.`,
+    },
   ];
 
   return (

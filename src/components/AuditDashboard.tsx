@@ -1,133 +1,317 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { AssetRow } from "@/lib/asset-types";
 import type { AssetEdits } from "@/lib/asset-edits";
-import { getEditKey, STATUS_OPTIONS } from "@/lib/asset-edits";
+import { getEditKey, effectiveUserActive, effectiveSkanska } from "@/lib/asset-edits";
+import { isStale, loadStaleThreshold } from "@/lib/stale-config";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Search, UserX, Users, AlertTriangle, Monitor, Clock } from "lucide-react";
 
 interface Props {
   rows: AssetRow[];
   edits: Record<string, AssetEdits>;
 }
 
+interface UserSummary {
+  user: string;            // canonical (lowercased) key
+  displayName: string;     // first non-empty raw spelling we saw
+  active: boolean;         // false if any row marks the user as inactive
+  rowCount: number;        // total rows for this user (computers + user-only)
+  computers: string[];     // distinct computernames associated with this user
+  models: string[];        // distinct models
+  managers: string[];      // distinct managers
+  departments: string[];   // distinct departments
+  companies: string[];     // distinct companies
+  hasNonSkanska: boolean;  // owns at least one non-Skanska device
+  staleCount: number;      // rows with stale Last logon date
+  exceptions: string[];    // distinct exceptions across rows
+  lastLogon: string;       // most recent Last logon date string we saw
+  rows: AssetRow[];
+}
+
+function uniq(values: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const v of values) {
+    const t = v.trim();
+    if (!t) continue;
+    const k = t.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(t);
+  }
+  return out;
+}
+
+function maxDateString(a: string, b: string): string {
+  if (!a) return b;
+  if (!b) return a;
+  // Best-effort lexicographic compare works for ISO-like YYYY-MM-DD;
+  // for free-form dates we just keep the longer one.
+  return a > b ? a : b;
+}
+
 export function AuditDashboard({ rows, edits }: Props) {
-  const statusCounts = useMemo(() => {
-    const counts: Record<string, number> = { "No status set": 0 };
-    STATUS_OPTIONS.forEach((s) => (counts[s] = 0));
-    rows.forEach((r) => {
-      const s = edits[getEditKey(r.id)]?.status || "";
-      if (s) counts[s] = (counts[s] ?? 0) + 1;
-      else counts["No status set"]++;
-    });
-    return counts;
-  }, [rows, edits]);
+  const [search, setSearch] = useState("");
+  const staleThreshold = loadStaleThreshold();
 
-  const warrantyCounts = useMemo(() => {
-    const today = new Date();
-    const in30 = new Date();
-    in30.setDate(in30.getDate() + 30);
-    const result = { expired: 0, expiring: 0, valid: 0, none: 0 };
-    rows.forEach((r) => {
-      const w = edits[getEditKey(r.id)]?.warrantyUntil || "";
-      if (!w) { result.none++; return; }
-      const d = new Date(w);
-      if (d < today) result.expired++;
-      else if (d <= in30) result.expiring++;
-      else result.valid++;
-    });
-    return result;
-  }, [rows, edits]);
+  const users: UserSummary[] = useMemo(() => {
+    const map = new Map<string, UserSummary>();
+    for (const r of rows) {
+      const rawUser = (r.user || r.raw["Username"] || "").trim();
+      if (!rawUser) continue; // user-centric view: skip orphan computers
+      const key = rawUser.toLowerCase();
+      const e = edits[getEditKey(r.id)];
+      const isInactive = effectiveUserActive(e) === "no";
+      const isNonSkanska = effectiveSkanska(e, r.computername) === "no";
+      const stale = isStale(r.raw["Last logon date"] ?? "", staleThreshold);
 
-  const sourceStats = useMemo(() => {
-    const map = new Map<string, { total: number; exceptions: number; statuses: Record<string, number> }>();
-    rows.forEach((r) => {
-      const src = r.sourceFile || "(unknown)";
-      if (!map.has(src)) map.set(src, { total: 0, exceptions: 0, statuses: {} });
-      const entry = map.get(src)!;
-      entry.total++;
-      if (r.exceptions.length > 0) entry.exceptions++;
-      const s = edits[getEditKey(r.id)]?.status || "No status";
-      entry.statuses[s] = (entry.statuses[s] ?? 0) + 1;
-    });
-    return [...map.entries()].sort((a, b) => b[1].total - a[1].total);
-  }, [rows, edits]);
+      let entry = map.get(key);
+      if (!entry) {
+        entry = {
+          user: key,
+          displayName: rawUser,
+          active: true,
+          rowCount: 0,
+          computers: [],
+          models: [],
+          managers: [],
+          departments: [],
+          companies: [],
+          hasNonSkanska: false,
+          staleCount: 0,
+          exceptions: [],
+          lastLogon: "",
+          rows: [],
+        };
+        map.set(key, entry);
+      }
+      entry.rowCount++;
+      entry.rows.push(r);
+      entry.computers.push(r.computername);
+      entry.models.push(r.modell);
+      entry.managers.push(r.raw["Manager"] ?? "");
+      entry.departments.push(r.raw["Department"] ?? "");
+      entry.companies.push(r.raw["Company"] ?? "");
+      entry.exceptions.push(...r.exceptions);
+      entry.lastLogon = maxDateString(entry.lastLogon, r.raw["Last logon date"] ?? "");
+      if (isInactive) entry.active = false;
+      if (isNonSkanska) entry.hasNonSkanska = true;
+      if (stale) entry.staleCount++;
+    }
+    // Dedupe array fields.
+    for (const u of map.values()) {
+      u.computers = uniq(u.computers);
+      u.models = uniq(u.models);
+      u.managers = uniq(u.managers);
+      u.departments = uniq(u.departments);
+      u.companies = uniq(u.companies);
+      u.exceptions = uniq(u.exceptions);
+    }
+    return [...map.values()].sort((a, b) =>
+      a.displayName.localeCompare(b.displayName, undefined, { sensitivity: "base" }),
+    );
+  }, [rows, edits, staleThreshold]);
 
-  const topExceptions = useMemo(() => {
-    const counts = new Map<string, number>();
-    rows.forEach((r) => r.exceptions.forEach((e) => counts.set(e, (counts.get(e) ?? 0) + 1)));
-    return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
-  }, [rows]);
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return users;
+    return users.filter((u) =>
+      u.displayName.toLowerCase().includes(q) ||
+      u.computers.some((c) => c.toLowerCase().includes(q)) ||
+      u.managers.some((m) => m.toLowerCase().includes(q)) ||
+      u.departments.some((d) => d.toLowerCase().includes(q)),
+    );
+  }, [users, search]);
+
+  // KPI roll-ups (all user-centric).
+  const totalUsers = users.length;
+  const inactiveUsers = users.filter((u) => !u.active).length;
+  const usersWithoutComputer = users.filter((u) => u.computers.length === 0).length;
+  const usersWithMultipleComputers = users.filter((u) => u.computers.length > 1).length;
+  const nonSkanskaUsers = users.filter((u) => u.hasNonSkanska).length;
+  const usersWithExceptions = users.filter((u) => u.exceptions.length > 0).length;
+  const staleUsers = users.filter((u) => u.staleCount > 0).length;
+
+  const kpis: { label: string; value: number; icon: typeof Users; color: string; tooltip: string }[] = [
+    {
+      label: "Total Users",
+      value: totalUsers,
+      icon: Users,
+      color: "text-primary",
+      tooltip: "Distinct people across all imported rows (case-insensitive). User-only and computer-only rows are merged when a username is present.",
+    },
+    {
+      label: "Inactive Users",
+      value: inactiveUsers,
+      icon: UserX,
+      color: "text-destructive",
+      tooltip: "Users where any row has 'User Active?' set to No — likely leavers whose accounts/devices need follow-up.",
+    },
+    {
+      label: "Without Computer",
+      value: usersWithoutComputer,
+      icon: AlertTriangle,
+      color: "text-amber-500",
+      tooltip: "Users present in the data but not associated with any Computername — typically Citrix/BYOD users or unprovisioned accounts.",
+    },
+    {
+      label: "Multi-Computer",
+      value: usersWithMultipleComputers,
+      icon: Monitor,
+      color: "text-chart-3",
+      tooltip: "Users currently linked to more than one Computername. Useful for spotting duplicate assignments or pending hardware swaps.",
+    },
+    {
+      label: "Non-Skanska Devices",
+      value: nonSkanskaUsers,
+      icon: Monitor,
+      color: "text-chart-4",
+      tooltip: "Users who own at least one device explicitly marked as 'Skanska computer? = No' (BYOD, consultant gear, VDI, etc.).",
+    },
+    {
+      label: "With Exceptions",
+      value: usersWithExceptions,
+      icon: AlertTriangle,
+      color: "text-destructive",
+      tooltip: "Users whose rows carry one or more data-quality flags (Missing user, Inactive user, Warranty expired, etc.).",
+    },
+    {
+      label: `Stale (>${staleThreshold}d)`,
+      value: staleUsers,
+      icon: Clock,
+      color: "text-amber-500",
+      tooltip: `Users with at least one row whose 'Last logon date' is older than ${staleThreshold} days. Threshold is configurable in the FilterBar.`,
+    },
+  ];
 
   return (
     <div className="space-y-6">
-      {/* Status Breakdown */}
+      {/* User-centric KPI roll-up */}
       <section>
-        <h2 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wide">Status Breakdown</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {Object.entries(statusCounts).map(([label, count]) => (
-            <Card key={label}>
-              <CardHeader className="pb-2 p-4">
-                <CardTitle className="text-xs text-muted-foreground font-medium">{label}</CardTitle>
-              </CardHeader>
-              <CardContent className="p-4 pt-0">
-                <p className="text-2xl font-bold tabular-nums">{count.toLocaleString()}</p>
-              </CardContent>
-            </Card>
+        <h2 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wide">
+          User Roll-Up
+        </h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+          {kpis.map((k) => (
+            <Tooltip key={k.label}>
+              <TooltipTrigger asChild>
+                <Card className="cursor-help">
+                  <CardHeader className="pb-2 p-4">
+                    <CardTitle className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
+                      <k.icon className={`h-3.5 w-3.5 ${k.color}`} strokeWidth={2} />
+                      {k.label}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-4 pt-0">
+                    <p className={`text-2xl font-bold tabular-nums ${k.color}`}>
+                      {k.value.toLocaleString()}
+                    </p>
+                  </CardContent>
+                </Card>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs text-xs leading-relaxed">
+                {k.tooltip}
+              </TooltipContent>
+            </Tooltip>
           ))}
         </div>
       </section>
 
-      {/* Warranty Overview */}
+      {/* Per-user table */}
       <section>
-        <h2 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wide">Warranty Overview</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {([
-            ["Expired", warrantyCounts.expired, "text-destructive"],
-            ["Expiring (30d)", warrantyCounts.expiring, "text-chart-3"],
-            ["Valid", warrantyCounts.valid, "text-chart-2"],
-            ["No warranty set", warrantyCounts.none, "text-muted-foreground"],
-          ] as const).map(([label, count, color]) => (
-            <Card key={label}>
-              <CardHeader className="pb-2 p-4">
-                <CardTitle className="text-xs text-muted-foreground font-medium">{label}</CardTitle>
-              </CardHeader>
-              <CardContent className="p-4 pt-0">
-                <p className={`text-2xl font-bold tabular-nums ${color}`}>{count.toLocaleString()}</p>
-              </CardContent>
-            </Card>
-          ))}
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+            Per-User Detail
+          </h2>
+          <div className="relative w-72">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search user, computer, manager…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9 h-9"
+            />
+          </div>
         </div>
-      </section>
-
-      {/* Per-source summary */}
-      {sourceStats.length > 0 && (
-        <section>
-          <h2 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wide">Per-Source File Summary</h2>
-          <Card>
-            <CardContent className="p-0">
+        <Card>
+          <CardContent className="p-0">
+            <div className="max-h-[60vh] overflow-auto">
               <Table>
-                <TableHeader>
+                <TableHeader className="sticky top-0 bg-background z-10">
                   <TableRow>
-                    <TableHead>Source File</TableHead>
-                    <TableHead className="text-right">Rows</TableHead>
-                    <TableHead className="text-right">Exceptions</TableHead>
-                    <TableHead>Status Distribution</TableHead>
+                    <TableHead>User</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Computers</TableHead>
+                    <TableHead>Models</TableHead>
+                    <TableHead>Manager</TableHead>
+                    <TableHead>Department</TableHead>
+                    <TableHead>Last Logon</TableHead>
+                    <TableHead>Flags</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {sourceStats.map(([src, stat]) => (
-                    <TableRow key={src}>
-                      <TableCell className="font-medium text-xs">{src}</TableCell>
-                      <TableCell className="text-right tabular-nums">{stat.total}</TableCell>
-                      <TableCell className="text-right tabular-nums">{stat.exceptions}</TableCell>
+                  {filtered.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center text-muted-foreground py-8 text-sm">
+                        No users match the current search.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {filtered.map((u) => (
+                    <TableRow key={u.user}>
+                      <TableCell className="font-medium text-sm">{u.displayName}</TableCell>
+                      <TableCell>
+                        {u.active ? (
+                          <Badge variant="secondary" className="text-xs">Active</Badge>
+                        ) : (
+                          <Badge variant="destructive" className="text-xs">Inactive</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {u.computers.length === 0 ? (
+                          <span className="text-muted-foreground text-xs italic">none</span>
+                        ) : (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className={u.computers.length > 1 ? "font-semibold text-chart-3" : ""}>
+                                {u.computers.length}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent className="text-xs">
+                              {u.computers.join(", ")}
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground max-w-[14rem] truncate">
+                        {u.models.join(", ") || "—"}
+                      </TableCell>
+                      <TableCell className="text-xs">{u.managers.join(", ") || "—"}</TableCell>
+                      <TableCell className="text-xs">{u.departments.join(", ") || "—"}</TableCell>
+                      <TableCell className="text-xs tabular-nums">
+                        {u.lastLogon || <span className="text-muted-foreground italic">—</span>}
+                      </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-1">
-                          {Object.entries(stat.statuses).map(([s, c]) => (
-                            <Badge key={s} variant="secondary" className="text-xs">
-                              {s}: {c}
+                          {u.hasNonSkanska && (
+                            <Badge variant="outline" className="text-[10px] border-chart-4/40 text-chart-4">
+                              Non-Skanska
+                            </Badge>
+                          )}
+                          {u.staleCount > 0 && (
+                            <Badge variant="outline" className="text-[10px] border-amber-500/40 text-amber-600 dark:text-amber-400">
+                              Stale ×{u.staleCount}
+                            </Badge>
+                          )}
+                          {u.exceptions.map((ex) => (
+                            <Badge key={ex} variant="outline" className="text-[10px] border-destructive/40 text-destructive">
+                              {ex}
                             </Badge>
                           ))}
                         </div>
@@ -136,37 +320,13 @@ export function AuditDashboard({ rows, edits }: Props) {
                   ))}
                 </TableBody>
               </Table>
-            </CardContent>
-          </Card>
-        </section>
-      )}
-
-      {/* Top Exceptions */}
-      {topExceptions.length > 0 && (
-        <section>
-          <h2 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wide">Top Exceptions</h2>
-          <Card>
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Exception</TableHead>
-                    <TableHead className="text-right">Count</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {topExceptions.map(([exc, count]) => (
-                    <TableRow key={exc}>
-                      <TableCell className="text-xs">{exc}</TableCell>
-                      <TableCell className="text-right tabular-nums font-medium">{count}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </section>
-      )}
+            </div>
+          </CardContent>
+        </Card>
+        <p className="text-xs text-muted-foreground mt-2">
+          Showing {filtered.length.toLocaleString()} of {users.length.toLocaleString()} users.
+        </p>
+      </section>
     </div>
   );
 }
