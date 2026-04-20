@@ -1471,18 +1471,27 @@ export function AssetViewer() {
                       </SelectContent>
                     </Select>
                     {selectedIds.size === 1 && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          const id = Array.from(selectedIds)[0];
-                          const r = rows.find((x) => x.id === id) ?? null;
-                          setHistoryDrawerRow(r);
-                          setHistoryDrawerOpen(true);
-                        }}
-                      >
-                        History
-                      </Button>
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setReplaceOpen(true)}
+                        >
+                          <RefreshCw className="h-3.5 w-3.5 mr-1" /> Replace device
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            const id = Array.from(selectedIds)[0];
+                            const r = rows.find((x) => x.id === id) ?? null;
+                            setHistoryDrawerRow(r);
+                            setHistoryDrawerOpen(true);
+                          }}
+                        >
+                          History
+                        </Button>
+                      </>
                     )}
                     <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>
                       Deselect all
@@ -1506,7 +1515,15 @@ export function AssetViewer() {
               </TabsContent>
 
               <TabsContent value="audit" className="flex-1 overflow-auto mt-4">
-                <AuditDashboard rows={rows} edits={edits} />
+                <AuditDashboard
+                  rows={rows}
+                  edits={edits}
+                  onPickUser={(key, display) => {
+                    setUserDrawerKey(key);
+                    setUserDrawerDisplay(display);
+                    setUserDrawerOpen(true);
+                  }}
+                />
               </TabsContent>
             </Tabs>
 
