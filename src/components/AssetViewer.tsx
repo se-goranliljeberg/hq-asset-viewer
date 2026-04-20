@@ -48,7 +48,7 @@ import { APP_VERSION, useHasUnseenVersion } from "@/lib/version-state";
 import { loadImportMeta, saveImportMeta, mergeImportMeta, type ImportMeta } from "@/lib/import-meta";
 import { ImportConflictDialog, type ConflictResolutions } from "./ImportConflictDialog";
 import { loadStaleThreshold, saveStaleThreshold, DEFAULT_STALE_THRESHOLD_DAYS } from "@/lib/stale-config";
-import { effectiveSkanska, effectiveUserActive } from "@/lib/asset-edits";
+import { effectiveSkanska, effectiveUserActive, effectiveExceptions } from "@/lib/asset-edits";
 
 import { toast } from "sonner";
 
@@ -953,8 +953,9 @@ export function AssetViewer() {
   }, [edits, rows]);
 
   const filtered = useMemo(() => {
+    const exOf = (r: AssetRow) => effectiveExceptions(r, edits[getEditKey(r.id)]);
     let result = rows;
-    if (activeCard === "exceptions") result = result.filter((r) => r.exceptions.length > 0);
+    if (activeCard === "exceptions") result = result.filter((r) => exOf(r).length > 0);
     else if (activeCard === "users") result = result.filter((r) => r.user !== "");
     else if (activeCard === "models") result = result.filter((r) => r.modell !== "");
     else if (activeCard === "stale") {
@@ -967,7 +968,7 @@ export function AssetViewer() {
         return Math.floor((Date.now() - then) / 86_400_000) > staleThreshold;
       });
     }
-    if (exceptionsOnly && activeCard !== "exceptions") result = result.filter((r) => r.exceptions.length > 0);
+    if (exceptionsOnly && activeCard !== "exceptions") result = result.filter((r) => exOf(r).length > 0);
     if (excludeInactive) {
       result = result.filter((r) => effectiveUserActive(edits[getEditKey(r.id)]) !== "no");
     }
@@ -1001,8 +1002,8 @@ export function AssetViewer() {
       result = [...result].sort((a, b) => {
         let va: string, vb: string;
         if (col === "Exceptions") {
-          va = a.exceptions.join(", ");
-          vb = b.exceptions.join(", ");
+          va = exOf(a).join(", ");
+          vb = exOf(b).join(", ");
         } else if (col === "Status") {
           va = edits[getEditKey(a.id)]?.status ?? "";
           vb = edits[getEditKey(b.id)]?.status ?? "";
