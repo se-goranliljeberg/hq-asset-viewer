@@ -757,7 +757,7 @@ export function AssetViewer() {
 
         // Build the "old asset" row: keep its computername/modell, clear user, set status.
         const oldStatus: LifecycleState = oldDestination;
-        let oldRow = {
+        let oldRow: AssetRow = {
           ...target,
           user: "",
           raw: { ...target.raw, Username: "" },
@@ -780,7 +780,7 @@ export function AssetViewer() {
         let newAssetId: number;
         if (source.kind === "new") {
           newAssetId = Math.max(...updatedRows.map((r) => r.id), 0) + 1;
-          let newRow = {
+          let newRow: AssetRow = {
             id: newAssetId,
             computername: source.computername,
             modell: source.modell,
@@ -789,10 +789,10 @@ export function AssetViewer() {
               Computername: source.computername,
               Modell: source.modell,
               Username: oldUser,
-            } as Record<string, string>,
-            exceptions: [] as string[],
+            },
+            exceptions: [],
             sourceFile: "Replace device",
-            assetKind: "computer" as const,
+            assetKind: "computer",
           };
           newRow = recordLifecycleEvent(newRow, {
             to: "Deployed at user",
