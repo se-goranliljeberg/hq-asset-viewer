@@ -149,12 +149,16 @@ function TechnicalDoc() {
         </p>
         <ul className="list-disc list-inside space-y-1 mt-2 font-mono text-xs">
           <li><code>hq_asset_data</code> — parsed asset rows + columns</li>
-          <li><code>hq_asset_edits</code> — manual edits & comments per row</li>
+          <li><code>hq_asset_edits</code> — manual edits & comments per row (incl. userActive, skanskaComputer)</li>
           <li><code>hq_asset_column_order</code> — user&rsquo;s column ordering</li>
           <li><code>hq_asset_column_widths</code> — user&rsquo;s column widths</li>
           <li><code>hq_mapping_*</code> — saved column mappings keyed by header-set hash</li>
           <li><code>hq_canonical_migrated_v1</code> — one-time migration flag</li>
           <li><code>hq_audit_user_initials</code> — initials shown in audit log entries</li>
+          <li><code>hq_filter_managers</code> — Manager filter chip selections</li>
+          <li><code>hq_filter_exclude_inactive</code> — &ldquo;Hide inactive&rdquo; toggle state</li>
+          <li><code>hq_filter_skanska</code> — Skanska tri-state filter (all / skanska / non-skanska)</li>
+          <li><code>hq_stale_threshold_days</code> — configurable stale-logon threshold (default 90)</li>
           <li><code>hq_last_seen_version</code> — last app version seen by this browser (used by the &ldquo;What&rsquo;s new&rdquo; toast)</li>
         </ul>
         <p className="mt-2">
