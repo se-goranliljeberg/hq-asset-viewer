@@ -30,13 +30,15 @@ const RELEASES: Release[] = [
   {
     version: "0.3.2",
     date: "2026-04-20",
-    title: "TODO — describe this release",
+    title: "User-centric Audit Report & KPI tooltips",
     added: [
-      "TODO: list new features added in this release.",
+      "Tooltips on every KPI card on the main asset list view (Total Assets, Unique Users, Unique Models, Exceptions, Stale) explaining exactly what each card counts and how clicking it filters the table. The Stale tooltip dynamically reflects the configured stale threshold (e.g. 'older than 90 days').",
+      "User-centric Audit Report: the dashboard is now grouped by user (case-insensitive) instead of by asset row. New user-level KPIs at the top — Total Users, Inactive Users, Users without Computers, Multi-Computer Users, Non-Skanska Device owners, Users with Exceptions, and Stale Users.",
+      "Per-User Detail table in the Audit Report: searchable list of every user with their active status, computernames (shown via tooltip when multiple), managers, departments, most recent logon date, and per-user data-quality flags (Stale, Non-Skanska, No computer, Multi-computer, Inactive).",
     ],
-    // changed: ["TODO: list behavior changes."],
-    // fixed:   ["TODO: list bug fixes."],
-    // removed: ["TODO: list removed features."],
+    changed: [
+      "Audit Report layout reorganised around the user as the primary entity; asset-level breakdowns (Status, exceptions, sources) are still available but secondary to the per-user roll-up.",
+    ],
   },
   {
     version: "0.3.1",
