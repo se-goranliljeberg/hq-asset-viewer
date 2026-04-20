@@ -2,7 +2,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
-import { Search, RotateCcw, Eraser } from "lucide-react";
+import { Search, RotateCcw, Eraser, FilterX } from "lucide-react";
 import { MultiSelect } from "@/components/ui/multi-select";
 
 export type SkanskaFilter = "all" | "skanska" | "non-skanska";
@@ -35,6 +35,7 @@ interface Props {
   statuses: string[];
   onResetColumns?: () => void;
   onResetMappings?: () => void;
+  onResetFilters?: () => void;
 }
 
 export const STATUS_NONE_TOKEN = "__none__";
@@ -51,7 +52,7 @@ export function FilterBar({
   skanskaFilter, onSkanskaFilter,
   staleThreshold, onStaleThreshold,
   models, users, managers, sources, statuses,
-  onResetColumns, onResetMappings,
+  onResetColumns, onResetMappings, onResetFilters,
 }: Props) {
   const cycleSkanska = () => {
     const next: SkanskaFilter = skanskaFilter === "skanska"
@@ -177,6 +178,19 @@ export function FilterBar({
       </Tooltip>
 
       <div className="ml-auto flex items-center gap-1">
+        {onResetFilters && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="sm" onClick={onResetFilters}>
+                <FilterX className="h-3.5 w-3.5 mr-1" /> Reset filters
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              Clear search and restore all filters to their defaults
+              (Hide inactive on, Skanska only, default statuses)
+            </TooltipContent>
+          </Tooltip>
+        )}
         {onResetMappings && (
           <Tooltip>
             <TooltipTrigger asChild>
