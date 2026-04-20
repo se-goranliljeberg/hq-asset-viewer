@@ -1015,7 +1015,9 @@ export function AssetViewer() {
               status: oldStatus,
               comment: appendComment(
                 originalEditsBefore.comment,
-                `Device returned: user "${oldUser || "(none)"}" unassigned, status → "${oldStatus}"`,
+                userKeepsOld
+                  ? `Handover: user "${oldUser || "(none)"}" keeps old device temporarily alongside the replacement`
+                  : `Device returned: user "${oldUser || "(none)"}" unassigned, status → "${oldStatus}"`,
               ),
             };
           }
