@@ -347,18 +347,39 @@ export function AssetViewer() {
     }
   }, []);
 
+  const remapImportedAt = useCallback(
+    (rowsCount: number, idMapper: (origIdx: number) => number | null): ImportMeta => {
+      const out: ImportMeta = {};
+      const src = pendingImportedAt.current;
+      for (let i = 0; i < rowsCount; i++) {
+        const stamps = src[i];
+        if (!stamps) continue;
+        const newId = idMapper(i);
+        if (newId === null) continue;
+        out[newId] = { ...stamps };
+      }
+      return out;
+    },
+    [],
+  );
+
   const applyParsed = useCallback((result: ParseResult) => {
     if (data) {
       pendingParsed.current = result.data;
       pendingSeedEdits.current = result.seedEdits;
+      pendingImportedAt.current = result.importedAt;
       setPendingIsUsersFile(result.isUsersFile);
       setImportModeOpen(true);
     } else {
       setData(result.data);
       applySeedEdits(result.seedEdits);
+      // Fresh load: row ids === original idx in parse result.
+      const meta: ImportMeta = {};
+      for (const [k, v] of Object.entries(result.importedAt)) meta[Number(k)] = { ...v };
+      mergeAndPersistMeta(meta);
       toast.success(`Loaded ${result.data.rows.length} rows from "${result.data.filename}"`);
     }
-  }, [data, setData, applySeedEdits]);
+  }, [data, setData, applySeedEdits, mergeAndPersistMeta]);
 
   const handleImportEnrich = useCallback(() => {
     setImportModeOpen(false);
@@ -379,37 +400,49 @@ export function AssetViewer() {
         if (e) byEmailExisting.set(e, r.id);
       }
       const remappedSeed: Record<string, AssetEdits> = {};
+      const idMap = new Map<number, number>();
       let unmatchedCounter = 0;
       incoming.rows.forEach((row, i) => {
-        const seed = pendingSeedEdits.current[String(i)];
-        if (!seed) return;
         const u = row.user.toLowerCase();
         const e = (row.raw["Email"] ?? "").toLowerCase();
         const matchId = (u && byUserExisting.get(u)) ?? (e && byEmailExisting.get(e)) ?? null;
+        let assignedId: number;
         if (matchId !== null && !matchedUserKeys.has(String(matchId))) {
           matchedUserKeys.add(String(matchId));
-          remappedSeed[String(matchId)] = seed;
+          assignedId = matchId;
         } else {
-          remappedSeed[String(maxExistingId + 1 + unmatchedCounter)] = seed;
+          assignedId = maxExistingId + 1 + unmatchedCounter;
           unmatchedCounter++;
         }
+        idMap.set(i, assignedId);
+        const seed = pendingSeedEdits.current[String(i)];
+        if (seed) remappedSeed[String(assignedId)] = seed;
       });
       applySeedEdits(remappedSeed);
+      mergeAndPersistMeta(remapImportedAt(incoming.rows.length, (i) => idMap.get(i) ?? null));
       toast.success(`Enriched users — total rows: ${merged.rows.length}`);
       pendingParsed.current = null;
       pendingSeedEdits.current = {};
+      pendingImportedAt.current = {};
       setPendingIsUsersFile(false);
     }
-  }, [data, setData, applySeedEdits]);
+  }, [data, setData, applySeedEdits, mergeAndPersistMeta, remapImportedAt]);
 
   const handleImportReplace = useCallback(() => {
     setImportModeOpen(false);
     if (pendingParsed.current) {
       setData(pendingParsed.current);
       applySeedEdits(pendingSeedEdits.current);
+      // Replace: row ids === original idx
+      const meta: ImportMeta = {};
+      for (const [k, v] of Object.entries(pendingImportedAt.current)) meta[Number(k)] = { ...v };
+      // Replace clobbers prior data, so reset rather than merge.
+      saveImportMeta(meta);
+      setImportMeta(meta);
       toast.success(`Replaced with ${pendingParsed.current.rows.length} rows`);
       pendingParsed.current = null;
       pendingSeedEdits.current = {};
+      pendingImportedAt.current = {};
     }
   }, [setData, applySeedEdits]);
 
@@ -429,11 +462,13 @@ export function AssetViewer() {
         }
       }
       applySeedEdits(remappedSeed);
+      mergeAndPersistMeta(remapImportedAt(incoming.rows.length, (i) => maxExistingId + 1 + i));
       toast.success(`Added ${incoming.rows.length} rows (total: ${merged.rows.length})`);
       pendingParsed.current = null;
       pendingSeedEdits.current = {};
+      pendingImportedAt.current = {};
     }
-  }, [data, setData, applySeedEdits]);
+  }, [data, setData, applySeedEdits, mergeAndPersistMeta, remapImportedAt]);
 
 
   const handleAddRow = useCallback((raw: Record<string, string>, status: AssetStatus, warrantyUntil: string) => {
