@@ -298,6 +298,10 @@ export function parseSheetWithMapping(
   const statusHeader = fieldToHeader["Status"];
   const warrantyHeader = fieldToHeader["Warranty until"];
   const createdHeader = fieldToHeader["AD Create.Date"];
+  const activeHeader = fieldToHeader["User Active?"];
+  const skanskaHeader = fieldToHeader["Skanska computer?"];
+  // If header is "AccountDisabled", treat truthy values as inactive (invert).
+  const activeHeaderInverts = !!activeHeader && /disabled/i.test(activeHeader);
 
   const dateFields: ReadonlySet<CanonicalField> = new Set<CanonicalField>([
     "AD Create.Date",
@@ -380,13 +384,29 @@ export function parseSheetWithMapping(
 
     if (Object.keys(rowStamps).length > 0) importedAt[idx] = rowStamps;
 
-    // Seed edits from imported Status / Warranty until columns
+    // Seed edits from imported Status / Warranty until / Active / Skanska columns
     const statusVal = statusHeader ? String(row[statusHeader] ?? "").trim() : "";
     const warrantyVal = warrantyHeader ? normalizeDate(row[warrantyHeader]) : "";
     const validStatus = normalizeStatus(statusVal);
-    if (validStatus || warrantyVal) {
-      seedEdits[String(idx)] = { status: validStatus, warrantyUntil: warrantyVal };
+    const activeVal: YesNo = activeHeader
+      ? normalizeYesNo(row[activeHeader], activeHeaderInverts)
+      : "";
+    let skanskaVal: YesNo = skanskaHeader ? normalizeYesNo(row[skanskaHeader]) : "";
+    // Per spec: if computername is empty, leave Skanska empty (don't default).
+    if (!skanskaVal && computername) skanskaVal = "yes";
+    if (!computername) skanskaVal = "";
+
+    if (validStatus || warrantyVal || activeVal || skanskaVal) {
+      seedEdits[String(idx)] = {
+        status: validStatus,
+        warrantyUntil: warrantyVal,
+        ...(activeVal ? { userActive: activeVal } : {}),
+        ...(skanskaVal ? { skanskaComputer: skanskaVal } : {}),
+      };
     }
+
+    // Inactive-user exception
+    if (activeVal === "no") exceptions.push("Inactive user");
 
     return { id: idx, computername, modell, user, raw, exceptions, sourceFile: filename };
   });
