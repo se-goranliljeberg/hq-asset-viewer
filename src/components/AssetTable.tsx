@@ -422,7 +422,37 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                     );
                   }
 
-                  if (col === COMMENTS_COL) {
+                  if (col === "User Active?" || col === "Skanska computer?") {
+                    const isActive = col === "User Active?";
+                    const editKey: keyof AssetEdits = isActive ? "userActive" : "skanskaComputer";
+                    const effective: YesNo = isActive
+                      ? effectiveUserActive(rowEdits)
+                      : effectiveSkanska(rowEdits, row.computername);
+                    return (
+                      <div key={col} className="px-1 py-0.5" style={{ width: w, minWidth: MIN_COL_W }}>
+                        <Select
+                          value={effective || "__none__"}
+                          onValueChange={(v) => onEdit(row.id, editKey, v === "__none__" ? "" : v)}
+                        >
+                          <SelectTrigger
+                            className={cn(
+                              "h-7 text-xs border-transparent bg-transparent hover:border-border",
+                              effective === "no" && "text-destructive",
+                              effective === "" && "text-muted-foreground",
+                            )}
+                          >
+                            <SelectValue placeholder="—" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">—</SelectItem>
+                            <SelectItem value="yes">Yes</SelectItem>
+                            <SelectItem value="no">No</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    );
+                  }
+
                     const val = rowEdits?.comment ?? "";
                     const entries = parseEntries(val);
                     const canUndo = entries.some((e) => !e.isNote && !!e.field);
