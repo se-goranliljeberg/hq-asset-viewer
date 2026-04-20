@@ -30,13 +30,16 @@ const RELEASES: Release[] = [
   {
     version: "0.3.4",
     date: "2026-04-20",
-    title: "TODO — describe this release",
+    title: "Clickable Audit Report KPIs",
     added: [
-      "TODO: list new features added in this release.",
+      "Every KPI card on the Audit Report (Inactive Users, Leavers w/ Device, Without Computer, Multi-Computer, Non-Skanska Devices, With Exceptions, Stale) is now a clickable filter for the Per-User Detail table. Clicking a card filters the table to just those users; clicking it again — or clicking Total Users — clears the filter.",
+      "Active KPI gets a primary-coloured ring so the current filter is obvious at a glance.",
+      "Dismissible filter chip next to the 'Per-User Detail' header shows the active KPI label (e.g. 'Leavers w/ Device ✕') and clears the filter on click.",
+      "Search composes on top of the KPI filter, so you can pick a segment and then refine by name, computer, manager or department.",
     ],
-    // changed: ["TODO: list behavior changes."],
-    // fixed:   ["TODO: list bug fixes."],
-    // removed: ["TODO: list removed features."],
+    changed: [
+      "User Roll-Up grid expanded from 7 to 8 columns on lg+ to accommodate the new Total Users / clear-filter card alongside the seven segment cards.",
+    ],
   },
   {
     version: "0.3.3",
