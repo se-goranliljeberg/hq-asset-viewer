@@ -735,17 +735,20 @@ export function AssetViewer() {
     }
 
     if (replacements.length > 0) {
-      ensureInitials(() => {
-        for (const r of replacements) {
-          const inc = incoming.rows[r.incomingIdx];
-          if (!inc || r.replaceExistingRowId === undefined) continue;
-          handleReplaceDevice(
-            r.replaceExistingRowId,
-            { kind: "new", computername: inc.computername, modell: inc.modell, warrantyUntil: "" },
-            (r.oldDestination ?? "In stock") as OldDeviceDestination,
-          );
-        }
-      });
+      const replaceFn = handleReplaceDeviceRef.current;
+      if (replaceFn) {
+        ensureInitials(() => {
+          for (const r of replacements) {
+            const inc = incoming.rows[r.incomingIdx];
+            if (!inc || r.replaceExistingRowId === undefined) continue;
+            replaceFn(
+              r.replaceExistingRowId,
+              { kind: "new", computername: inc.computername, modell: inc.modell, warrantyUntil: "" },
+              (r.oldDestination ?? "In stock") as OldDeviceDestination,
+            );
+          }
+        });
+      }
     }
 
     const keptRows: AssetRow[] = [];
@@ -794,7 +797,7 @@ export function AssetViewer() {
     pendingSeedEdits.current = {};
     pendingImportedAt.current = {};
     setPendingMultiAssetCases([]);
-  }, [data, setData, ensureInitials, applySeedEdits, mergeAndPersistMeta, remapImportedAt, handleReplaceDevice]);
+  }, [data, setData, ensureInitials, applySeedEdits, mergeAndPersistMeta, remapImportedAt]);
 
   const handleMultiAssetCancel = useCallback(() => {
     setMultiAssetOpen(false);
