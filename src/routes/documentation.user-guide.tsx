@@ -130,12 +130,38 @@ function UserGuide() {
         </p>
       </Section>
 
-      <Section id="table" title="5. Working with the table">
+      <Section id="duplicates" title="5. Duplicate usernames on import">
+        <p>
+          <strong>Username is the master key.</strong> When you import a file (Add or Enrich) and
+          one or more incoming rows share a Username (case-insensitive) with rows already in the
+          table, the <strong>Import Conflict</strong> dialog opens.
+        </p>
+        <p className="mt-2">
+          For each conflicting row the dialog shows only the fields where the existing and incoming
+          values differ <em>and</em> the incoming value is non-empty. Tick the boxes for the fields
+          you want to overwrite — unchecked fields keep the existing value. Use <strong>Select all
+          </strong> / <strong>Skip all</strong> at the row level to apply quickly.
+        </p>
+        <Info_>
+          Each row that gets updated receives a single combined audit-log entry summarising every
+          field that changed (e.g. <code>Status from &ldquo;Active&rdquo; to &ldquo;Retired&rdquo;,
+          Department from &ldquo;HQ&rdquo; to &ldquo;IT&rdquo;</code>).
+        </Info_>
+        <p className="mt-2">
+          Truly-new incoming rows (no matching Username) are appended via the normal Add path.
+        </p>
+      </Section>
+
+      <Section id="table" title="6. Working with the table">
         <ul className="list-disc list-inside space-y-1">
           <li>Click any column header to sort by that column.</li>
           <li>Use the search box and filter chips above the table to narrow down rows.</li>
           <li>KPI cards at the top show counts; click one to filter to that segment.</li>
           <li>Drag column edges to resize, drag headers to reorder.</li>
+          <li>
+            <strong>Total Assets</strong> counts only rows with a non-empty Computername, so
+            users-only entries do not inflate the asset count.
+          </li>
         </ul>
       </Section>
 
