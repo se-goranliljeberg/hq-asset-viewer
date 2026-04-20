@@ -45,6 +45,7 @@ import { ColumnMappingDialog } from "./ColumnMappingDialog";
 import { InitialsPromptDialog } from "./InitialsPromptDialog";
 import { WhatsNewToast } from "./WhatsNewToast";
 import { MultiAssetImportDialog, type MultiAssetResolution } from "./MultiAssetImportDialog";
+import { BatchCommentDialog } from "./BatchCommentDialog";
 import { AssetHistoryDrawer } from "./AssetHistoryDrawer";
 import { UserHistoryDrawer } from "./UserHistoryDrawer";
 import { AssetManagementView } from "./AssetManagementView";
