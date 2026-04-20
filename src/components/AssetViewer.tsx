@@ -889,17 +889,31 @@ export function AssetViewer() {
         const oldUser = target.user;
         const oldComputername = target.computername;
         const oldModell = target.modell;
+        const oldHistory = target.history ?? [];
+        const oldPrevUsers = target.previousUsers ?? [];
         const nowIso = new Date().toISOString();
-
-        // Build the "old asset" row: keep its computername/modell, clear user, set status.
         const oldStatus: LifecycleState = oldDestination;
-        let oldRow: AssetRow = {
-          ...target,
-          user: "",
-          raw: { ...target.raw, Username: "" },
-        };
+
+        let updatedRows = data.rows;
+
+        // Spin off the OLD device (if there was one) into its own NEW row.
+        // The original row (rowId) keeps the user and gets the replacement device.
+        let spinoffId: number | null = null;
         if (oldComputername.trim()) {
-          oldRow = recordLifecycleEvent(oldRow, {
+          spinoffId = Math.max(...updatedRows.map((r) => r.id), 0) + 1;
+          let spinoffRow: AssetRow = {
+            id: spinoffId,
+            computername: oldComputername,
+            modell: oldModell,
+            user: "",
+            raw: { ...target.raw, Username: "" },
+            exceptions: [],
+            sourceFile: target.sourceFile,
+            assetKind: "computer",
+            history: oldHistory,
+            previousUsers: oldPrevUsers,
+          };
+          spinoffRow = recordLifecycleEvent(spinoffRow, {
             from: "Deployed at user",
             to: oldStatus,
             prevUser: oldUser,
@@ -908,87 +922,117 @@ export function AssetViewer() {
               : `Replaced with in-stock device`,
             at: nowIso,
           });
+          updatedRows = [...updatedRows, spinoffRow];
         }
 
-        let updatedRows = data.rows.map((r) => (r.id === rowId ? oldRow : r));
-
-        // Build / pick the "new asset" row.
-        let newAssetId: number;
+        // Now mutate the ORIGINAL row to hold the new device + same user.
         if (source.kind === "new") {
-          newAssetId = Math.max(...updatedRows.map((r) => r.id), 0) + 1;
-          let newRow: AssetRow = {
-            id: newAssetId,
-            computername: source.computername,
-            modell: source.modell,
-            user: oldUser,
-            raw: {
-              Computername: source.computername,
-              Modell: source.modell,
-              Username: oldUser,
-            },
-            exceptions: [],
-            sourceFile: "Replace device",
-            assetKind: "computer",
-          };
-          newRow = recordLifecycleEvent(newRow, {
-            to: "Deployed at user",
-            user: oldUser,
-            note: `New device replacing ${oldComputername || "(none)"}`,
-            at: nowIso,
-          });
-          updatedRows = [...updatedRows, newRow];
-        } else {
-          newAssetId = source.sourceRowId;
           updatedRows = updatedRows.map((r) => {
-            if (r.id !== newAssetId) return r;
-            const reassigned = {
+            if (r.id !== rowId) return r;
+            let updated: AssetRow = {
               ...r,
+              computername: source.computername,
+              modell: source.modell,
               user: oldUser,
-              raw: { ...r.raw, Username: oldUser },
+              raw: {
+                ...r.raw,
+                Computername: source.computername,
+                Modell: source.modell,
+                Username: oldUser,
+              },
+              exceptions: [],
+              assetKind: "computer",
+              // Reset history/previousUsers — those belong to the spun-off old device.
+              history: [],
+              previousUsers: [],
             };
-            return recordLifecycleEvent(reassigned, {
-              from: "In stock",
+            updated = recordLifecycleEvent(updated, {
               to: "Deployed at user",
               user: oldUser,
-              note: `Re-assigned from stock to ${oldUser || "(no user)"}`,
+              note: `New device replacing ${oldComputername || "(none)"}`,
               at: nowIso,
             });
+            return updated;
           });
+        } else {
+          // From in-stock: original row takes over the in-stock device's identity;
+          // the in-stock source row is removed.
+          const stockRow = data.rows.find((r) => r.id === source.sourceRowId);
+          if (!stockRow) return;
+          updatedRows = updatedRows
+            .filter((r) => r.id !== source.sourceRowId)
+            .map((r) => {
+              if (r.id !== rowId) return r;
+              let updated: AssetRow = {
+                ...r,
+                computername: stockRow.computername,
+                modell: stockRow.modell,
+                user: oldUser,
+                raw: {
+                  ...r.raw,
+                  Computername: stockRow.computername,
+                  Modell: stockRow.modell,
+                  Username: oldUser,
+                },
+                exceptions: [],
+                assetKind: "computer",
+                history: stockRow.history ?? [],
+                previousUsers: stockRow.previousUsers ?? [],
+              };
+              updated = recordLifecycleEvent(updated, {
+                from: "In stock",
+                to: "Deployed at user",
+                user: oldUser,
+                note: `Re-assigned from stock to ${oldUser || "(no user)"}`,
+                at: nowIso,
+              });
+              return updated;
+            });
         }
 
         setData({ ...data, rows: updatedRows });
 
-        // Update edits: old row gets new status; new row gets Deployed status (+ warranty if provided).
+        // Update edits:
+        //  - Spun-off row inherits the original row's prior edits, with new status.
+        //  - Original row (rowId) now represents the NEW device → Deployed status.
+        //  - In-stock source row's edits are dropped (its identity moved into rowId).
         setEditsState((prev) => {
           const next = { ...prev };
-          if (oldComputername.trim()) {
-            const oldKey = getEditKey(rowId);
-            const cur = next[oldKey] ?? { status: "", warrantyUntil: "" };
-            next[oldKey] = {
-              ...cur,
+          const originalKey = getEditKey(rowId);
+          const originalEditsBefore = next[originalKey] ?? { status: "", warrantyUntil: "" };
+
+          if (spinoffId !== null) {
+            const spinoffKey = getEditKey(spinoffId);
+            next[spinoffKey] = {
+              ...originalEditsBefore,
               status: oldStatus,
               comment: appendComment(
-                cur.comment,
+                originalEditsBefore.comment,
                 `Device returned: user "${oldUser || "(none)"}" unassigned, status → "${oldStatus}"`,
               ),
             };
           }
-          const newKey = getEditKey(newAssetId);
-          const curNew = next[newKey] ?? { status: "", warrantyUntil: "" };
-          const newWarranty = source.kind === "new" && source.warrantyUntil
-            ? source.warrantyUntil
-            : curNew.warrantyUntil;
-          next[newKey] = {
-            ...curNew,
+
+          const newWarranty =
+            source.kind === "new"
+              ? (source.warrantyUntil ?? "")
+              : (next[getEditKey(source.sourceRowId)]?.warrantyUntil ?? "");
+
+          next[originalKey] = {
             status: "Deployed at user",
             warrantyUntil: newWarranty,
             comment: appendComment(
-              curNew.comment,
+              undefined,
               source.kind === "new"
                 ? `Device deployed to "${oldUser || "(no user)"}" (replacing ${oldComputername || "(none)"})`
                 : `Device re-deployed from stock to "${oldUser || "(no user)"}"`,
             ),
           };
+
+          if (source.kind === "stock") {
+            delete next[getEditKey(source.sourceRowId)];
+          }
+
           saveEdits(next);
           return next;
         });
