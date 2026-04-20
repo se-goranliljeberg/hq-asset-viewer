@@ -423,7 +423,7 @@ export function AssetViewer() {
       }
     }
     ensureInitials(() => performEdit(rowId, field, value));
-  }, [performEdit, ensureInitials, data]);
+  }, [performEdit, ensureInitials, data, handleStatusReturnSplit]);
 
   const performCellEdit = useCallback((rowId: number, column: string, value: string) => {
     if (!data) return;
