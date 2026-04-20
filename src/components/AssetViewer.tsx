@@ -892,7 +892,9 @@ export function AssetViewer() {
         const oldHistory = target.history ?? [];
         const oldPrevUsers = target.previousUsers ?? [];
         const nowIso = new Date().toISOString();
-        const oldStatus: LifecycleState = oldDestination;
+        // "User keeps old device" = handover: spun-off row stays Deployed at user.
+        const userKeepsOld = oldDestination === "User keeps old device";
+        const oldStatus: LifecycleState = userKeepsOld ? "Deployed at user" : oldDestination;
 
         let updatedRows = data.rows;
 
@@ -905,8 +907,8 @@ export function AssetViewer() {
             id: spinoffId,
             computername: oldComputername,
             modell: oldModell,
-            user: "",
-            raw: { ...target.raw, Username: "" },
+            user: userKeepsOld ? oldUser : "",
+            raw: { ...target.raw, Username: userKeepsOld ? oldUser : "" },
             exceptions: [],
             sourceFile: target.sourceFile,
             assetKind: "computer",
@@ -916,10 +918,15 @@ export function AssetViewer() {
           spinoffRow = recordLifecycleEvent(spinoffRow, {
             from: "Deployed at user",
             to: oldStatus,
-            prevUser: oldUser,
-            note: source.kind === "new"
-              ? `Replaced with new device ${source.computername}`
-              : `Replaced with in-stock device`,
+            user: userKeepsOld ? oldUser : undefined,
+            prevUser: userKeepsOld ? undefined : oldUser,
+            note: userKeepsOld
+              ? `Handover period — user keeps old device alongside ${
+                  source.kind === "new" ? source.computername : "in-stock replacement"
+                }`
+              : source.kind === "new"
+                ? `Replaced with new device ${source.computername}`
+                : `Replaced with in-stock device`,
             at: nowIso,
           });
           updatedRows = [...updatedRows, spinoffRow];
