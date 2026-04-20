@@ -275,6 +275,7 @@ export function AssetManagementView({ rows, edits, onOpenUser, onOpenAsset }: Pr
           )}
         </CardContent>
       </Card>
+      )}
     </div>
   );
 }
