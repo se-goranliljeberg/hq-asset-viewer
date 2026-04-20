@@ -165,15 +165,71 @@ function UserGuide() {
         </ul>
       </Section>
 
-      <Section id="editing" title="6. Editing data">
+      <Section id="editing" title="7. Editing data">
         <p>
           Double-click an editable cell (Status, Warranty until, Comments, etc.) to edit it in
           place. Press <kbd>Enter</kbd> to save, <kbd>Esc</kbd> to cancel.
         </p>
-        <Info_>Every save automatically appends an entry to the row&rsquo;s Comments column — see §9.</Info_>
+        <Info_>Every save automatically appends an entry to the row&rsquo;s Comments column — see §13.</Info_>
       </Section>
 
-      <Section id="batch" title="7. Batch updates">
+      <Section id="active-skanska" title="8. User Active? & Skanska computer?">
+        <p>
+          Two Yes/No columns track lifecycle and ownership:
+        </p>
+        <ul className="list-disc list-inside space-y-1 mt-1">
+          <li>
+            <strong>User Active?</strong> — Whether the user is still with the company. Defaults
+            to <em>Yes</em>. Set to <em>No</em> for leavers; the row is automatically tagged with
+            an <em>Inactive user</em> exception and hidden by default (see §10).
+          </li>
+          <li>
+            <strong>Skanska computer?</strong> — Whether the asset is a Skanska-issued device.
+            Defaults to <em>Yes</em>; set to <em>No</em> for personal computers, BYOD or Citrix
+            VDIs. Rows with no Computername are left blank and are not auto-classified.
+          </li>
+        </ul>
+        <p className="mt-2">
+          Both columns are importable (the parser recognises common aliases like
+          <code> enabled</code>, <code> disabled</code>, <code> company device</code>, etc.),
+          inline-editable, and included in CSV exports.
+        </p>
+      </Section>
+
+      <Section id="stale" title="9. Stale logon highlighting">
+        <p>
+          The <strong>Last logon date</strong> cell turns amber when the value is older than the
+          configured threshold. Hover the cell to see the exact age (e.g. &ldquo;127 days since
+          last logon&rdquo;).
+        </p>
+        <p className="mt-2">
+          The threshold defaults to <strong>90 days</strong> and can be changed via the small
+          &ldquo;Stale after __ days&rdquo; input in the FilterBar. Your choice is persisted in
+          localStorage. The KPI grid includes a <strong>Stale (&gt;Nd)</strong> card; click it to
+          filter the table to stale accounts only.
+        </p>
+      </Section>
+
+      <Section id="filters" title="10. Filters (Manager, Inactive, Skanska)">
+        <ul className="list-disc list-inside space-y-1">
+          <li>
+            <strong>Manager</strong> — multi-select with search; values come from the
+            <code> Manager </code> column of the source file. Persisted to localStorage.
+          </li>
+          <li>
+            <strong>Hide inactive</strong> — on by default; hides rows where User Active? = No.
+            Toggle off to see all users.
+          </li>
+          <li>
+            <strong>Skanska computer?</strong> — tri-state filter (All / Skanska / Non-Skanska).
+            Defaults to <em>Skanska only</em>, which excludes BYOD and rows with empty
+            Computername.
+          </li>
+        </ul>
+        <p className="mt-2">All three appear as removable chips in the active-filters row.</p>
+      </Section>
+
+      <Section id="batch" title="11. Batch updates">
         <p>
           Tick the checkboxes on the left of multiple rows, then use the batch action bar to change
           their Status in one go. Each affected row gets its own audit entry marked
@@ -181,35 +237,37 @@ function UserGuide() {
         </p>
       </Section>
 
-      <Section id="add-row" title="8. Adding new rows">
+      <Section id="add-row" title="12. Adding new rows">
         <p>
           Click <strong>Add Row</strong> in the header to enter a new asset manually. The new row is
           stamped with a creation entry in its Comments column summarising the values you entered.
         </p>
       </Section>
 
-      <Section id="comments" title="9. Comments & audit log">
+      <Section id="comments" title="13. Comments & audit log">
         <p>
           Comments is a free-text column you can write anything in (e.g. &ldquo;lost
-          computer&rdquo;, &ldquo;to be removed&rdquo;). Whenever you change a field, a line is
-          <strong> appended </strong> in this format:
+          computer&rdquo;, &ldquo;to be removed&rdquo;). Whenever you change a field — including
+          Warranty until — a line is <strong>appended</strong> in this format:
         </p>
         <pre className="rounded-md bg-secondary/40 border border-border p-3 text-xs mt-2">
-{`Date: 2026-04-17 Change: Status from "Active" to "Retired"`}
+{`Date: 2026-04-20 14:32 [INI] Change: Status from "Active" to "Retired"`}
         </pre>
         <p className="mt-2">
           Existing comments are never overwritten — entries are joined with <code> | </code>. The
-          Comments column is included in CSV exports.
+          Comments column is included in CSV exports. Timestamps include hours and minutes
+          (HH:MM) since v0.3.0.
         </p>
       </Section>
 
-      <Section id="exceptions" title="10. Exceptions">
+      <Section id="exceptions" title="14. Exceptions">
         <p>The Exceptions column flags rows that need attention:</p>
         <ul className="list-disc list-inside space-y-1 mt-1">
           <li><strong>Missing user</strong> — Computer record has no associated user.</li>
           <li><strong>Missing computer</strong> — User has no computer assigned.</li>
           <li><strong>Inactive &gt; 90 days</strong> — Last account activity is stale.</li>
           <li><strong>Warranty expired</strong> — Warranty date has passed.</li>
+          <li><strong>Inactive user</strong> — User Active? is set to No (default-hidden).</li>
         </ul>
       </Section>
 
