@@ -137,6 +137,7 @@ export function AssetViewer() {
   const pendingSheet = useRef("");
   const pendingParsed = useRef<AssetData | null>(null);
   const pendingSeedEdits = useRef<Record<string, AssetEdits>>({});
+  const pendingImportedAt = useRef<Record<number, Record<string, string>>>({});
 
   // Mapping dialog state
   const [mappingOpen, setMappingOpen] = useState(false);
