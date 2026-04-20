@@ -30,13 +30,14 @@ const RELEASES: Release[] = [
   {
     version: "0.3.1",
     date: "2026-04-20",
-    title: "TODO — describe this release",
+    title: "Reset filters button & unique-computername Total Assets",
     added: [
-      "TODO: list new features added in this release.",
+      "'Reset filters' button in the FilterBar (next to Reset mappings / Reset columns) that restores every filter to its app-level default in one click: clears search, Model, User, Manager, Source and KPI selection; restores the default Status set; turns Hide inactive back on; and sets Skanska computer? back to 'Skanska only'.",
+      "Tooltip on the Total Assets KPI card explaining what it counts.",
     ],
-    // changed: ["TODO: list behavior changes."],
-    // fixed:   ["TODO: list bug fixes."],
-    // removed: ["TODO: list removed features."],
+    changed: [
+      "Total Assets KPI now counts unique Computernames (case-insensitive, blanks excluded) instead of all rows. Users-only entries no longer inflate the count, and accidental duplicates from re-imports collapse to one entry.",
+    ],
   },
   {
     version: "0.3.0",
