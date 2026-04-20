@@ -292,10 +292,22 @@ export function AuditDashboard({ rows, edits }: Props) {
 
       {/* Per-user table */}
       <section>
-        <div className="flex items-center justify-between gap-3 mb-3">
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-            Per-User Detail
-          </h2>
+        <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+              Per-User Detail
+            </h2>
+            {activeKpiLabel && (
+              <Badge
+                variant="secondary"
+                className="text-xs cursor-pointer hover:bg-secondary/80"
+                onClick={() => setFilterKey(null)}
+                title="Clear KPI filter"
+              >
+                {activeKpiLabel} ✕
+              </Badge>
+            )}
+          </div>
           <div className="relative w-72">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
