@@ -716,6 +716,96 @@ export function AssetViewer() {
     toast.info("Import cancelled.");
   }, []);
 
+  // ─── Multi-asset import resolution ──────────────────────────────────────
+  const handleMultiAssetApply = useCallback((resolutions: MultiAssetResolution[]) => {
+    setMultiAssetOpen(false);
+    if (!data || !pendingParsed.current) {
+      setPendingMultiAssetCases([]);
+      return;
+    }
+    const incoming = pendingParsed.current;
+    const dropIdx = new Set<number>();
+    const replacements: MultiAssetResolution[] = [];
+    for (const r of resolutions) {
+      if (r.choice === "skip") dropIdx.add(r.incomingIdx);
+      else if (r.choice === "replace") {
+        dropIdx.add(r.incomingIdx);
+        replacements.push(r);
+      }
+    }
+
+    if (replacements.length > 0) {
+      ensureInitials(() => {
+        for (const r of replacements) {
+          const inc = incoming.rows[r.incomingIdx];
+          if (!inc || r.replaceExistingRowId === undefined) continue;
+          handleReplaceDevice(
+            r.replaceExistingRowId,
+            { kind: "new", computername: inc.computername, modell: inc.modell, warrantyUntil: "" },
+            (r.oldDestination ?? "In stock") as OldDeviceDestination,
+          );
+        }
+      });
+    }
+
+    const keptRows: AssetRow[] = [];
+    const keptOriginalIdx: number[] = [];
+    incoming.rows.forEach((row, i) => {
+      if (!dropIdx.has(i)) {
+        keptRows.push(row);
+        keptOriginalIdx.push(i);
+      }
+    });
+
+    if (keptRows.length === 0) {
+      pendingParsed.current = null;
+      pendingSeedEdits.current = {};
+      pendingImportedAt.current = {};
+      setPendingMultiAssetCases([]);
+      toast.success("Import resolved.");
+      return;
+    }
+
+    const newSeed: Record<string, AssetEdits> = {};
+    const newStamps: Record<number, Record<string, string>> = {};
+    keptOriginalIdx.forEach((origIdx, newIdx) => {
+      const s = pendingSeedEdits.current[String(origIdx)];
+      if (s) newSeed[String(newIdx)] = s;
+      const st = pendingImportedAt.current[origIdx];
+      if (st) newStamps[newIdx] = st;
+    });
+    pendingSeedEdits.current = newSeed;
+    pendingImportedAt.current = newStamps;
+
+    const filtered: AssetData = { ...incoming, rows: keptRows };
+    const merged = mergeData(data, filtered);
+    setData(merged);
+    const maxExistingId = data.rows.reduce((m, r) => Math.max(m, r.id), -1);
+    const remappedSeed: Record<string, AssetEdits> = {};
+    for (const [oldKey, seed] of Object.entries(pendingSeedEdits.current)) {
+      const oldIdx = Number(oldKey);
+      if (Number.isFinite(oldIdx)) remappedSeed[String(maxExistingId + 1 + oldIdx)] = seed;
+    }
+    applySeedEdits(remappedSeed);
+    mergeAndPersistMeta(remapImportedAt(filtered.rows.length, (i) => maxExistingId + 1 + i));
+    toast.success(`Added ${filtered.rows.length} rows; resolved ${replacements.length} replacement${replacements.length === 1 ? "" : "s"}.`);
+
+    pendingParsed.current = null;
+    pendingSeedEdits.current = {};
+    pendingImportedAt.current = {};
+    setPendingMultiAssetCases([]);
+  }, [data, setData, ensureInitials, applySeedEdits, mergeAndPersistMeta, remapImportedAt, handleReplaceDevice]);
+
+  const handleMultiAssetCancel = useCallback(() => {
+    setMultiAssetOpen(false);
+    setPendingMultiAssetCases([]);
+    pendingParsed.current = null;
+    pendingSeedEdits.current = {};
+    pendingImportedAt.current = {};
+    toast.info("Import cancelled.");
+  }, []);
+
+
 
 
   const handleAddRow = useCallback((raw: Record<string, string>, status: AssetStatus, warrantyUntil: string) => {
