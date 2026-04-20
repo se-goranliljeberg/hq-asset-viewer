@@ -271,7 +271,7 @@ function UserGuide() {
         </ul>
       </Section>
 
-      <Section id="reset" title="11. Reset columns / mappings">
+      <Section id="reset" title="15. Reset columns / mappings">
         <ul className="list-disc list-inside space-y-1">
           <li>
             <strong>Reset columns</strong> — restores the default left-to-right order and widths.
@@ -284,7 +284,7 @@ function UserGuide() {
         </ul>
       </Section>
 
-      <Section id="export" title="12. Exporting">
+      <Section id="export" title="16. Exporting">
         <p>
           <strong>Export CSV</strong> downloads the currently filtered rows including all visible
           columns plus Comments and Exceptions. The CSV is generated in your browser; no copy is
@@ -292,7 +292,7 @@ function UserGuide() {
         </p>
       </Section>
 
-      <Section id="clear" title="13. Clearing local data">
+      <Section id="clear" title="17. Clearing local data">
         <Warning>
           <strong>Clear</strong> removes the loaded data, edits, mappings and column preferences
           from your browser. <strong>This cannot be undone.</strong> Export to CSV first if you
@@ -300,11 +300,16 @@ function UserGuide() {
         </Warning>
       </Section>
 
-      <Section id="think" title="14. What to think about">
+      <Section id="think" title="18. What to think about">
         <ul className="list-disc list-inside space-y-1">
           <li>
             <strong>Re-import after big source changes.</strong> The app cannot detect changes in
             the underlying systems — re-export and re-import to refresh.
+          </li>
+          <li>
+            <strong>Username is the master key.</strong> When re-importing, duplicate usernames
+            open the Import Conflict dialog so you choose which fields to overwrite — the Excel
+            file is not implicitly trusted over your manual edits.
           </li>
           <li>
             <strong>Mappings are remembered per file structure.</strong> If your source file gains
@@ -325,7 +330,7 @@ function UserGuide() {
         </ul>
       </Section>
 
-      <Section id="troubleshooting" title="15. Troubleshooting">
+      <Section id="troubleshooting" title="19. Troubleshooting">
         <p>
           Use <strong>Debug Import</strong> in the header to inspect a file before importing. It
           shows the detected sheets, headers, sample values and the suggested canonical mapping —
