@@ -132,12 +132,12 @@ export function AssetViewer() {
     } catch { return false; }
   });
   const [skanskaFilter, setSkanskaFilter] = useState<SkanskaFilter>(() => {
-    if (typeof window === "undefined") return "skanska";
+    if (typeof window === "undefined") return "all";
     try {
       const raw = localStorage.getItem(FILTER_STORAGE_KEYS.skanska);
       if (raw === "all" || raw === "skanska" || raw === "non-skanska") return raw;
     } catch { /* noop */ }
-    return "skanska";
+    return "all";
   });
   const [staleThreshold, setStaleThresholdState] = useState<number>(() => loadStaleThreshold());
 
