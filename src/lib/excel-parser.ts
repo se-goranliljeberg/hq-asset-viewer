@@ -302,6 +302,8 @@ export function parseSheetWithMapping(
   }
 
   const seedEdits: Record<string, AssetEdits> = {};
+  const importedAt: Record<number, Record<string, string>> = {};
+  const importIso = new Date().toISOString();
   // Final columns: only canonical ones that are mapped. We always include the
   // mapped fields in canonical order (for stability across files).
   const finalCols: CanonicalField[] = CANONICAL_FIELDS.filter((f) => !!fieldToHeader[f]);
@@ -332,6 +334,7 @@ export function parseSheetWithMapping(
 
     // Build raw using ONLY canonical columns
     const raw: Record<string, string> = {};
+    const rowStamps: Record<string, string> = {};
     for (const field of finalCols) {
       const src = fieldToHeader[field]!;
       const cellValue = row[src];
@@ -344,9 +347,12 @@ export function parseSheetWithMapping(
         str = String(cellValue ?? "").trim();
       }
       raw[field] = str;
+      if (str) rowStamps[field] = importIso;
     }
     // Ensure derived user fallback shows in Username column too
     if (!raw["Username"] && user) raw["Username"] = user;
+
+    if (Object.keys(rowStamps).length > 0) importedAt[idx] = rowStamps;
 
     // Seed edits from imported Status / Warranty until columns
     const statusVal = statusHeader ? String(row[statusHeader] ?? "").trim() : "";
@@ -363,6 +369,7 @@ export function parseSheetWithMapping(
     data: { rows, columns: finalCols as string[], filename, loadedAt: new Date().toISOString() },
     seedEdits,
     isUsersFile,
+    importedAt,
   };
 }
 
