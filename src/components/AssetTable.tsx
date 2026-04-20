@@ -457,7 +457,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
 
                   // Editable raw data columns — double-click to edit
                   const val = row.raw[col] ?? "";
-                  return (
+                  const cell = (
                     <InlineCell
                       key={col}
                       value={val}
@@ -467,6 +467,24 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                       onCellEdit={onCellEdit}
                     />
                   );
+                  if (col === "Last logon date" && val && importedAt) {
+                    const stamp = getImportedAt(importedAt, row.id, col);
+                    if (stamp) {
+                      const d = new Date(stamp);
+                      const label = isNaN(d.getTime())
+                        ? stamp
+                        : `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+                      return (
+                        <Tooltip key={col}>
+                          <TooltipTrigger asChild>
+                            <div>{cell}</div>
+                          </TooltipTrigger>
+                          <TooltipContent>Imported on {label}</TooltipContent>
+                        </Tooltip>
+                      );
+                    }
+                  }
+                  return cell;
                 })}
               </div>
             );
