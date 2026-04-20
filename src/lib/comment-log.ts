@@ -44,11 +44,15 @@ export function appendComment(
   change: string,
   initials?: string,
 ): string {
-  const today = new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10);
+  const hh = String(now.getHours()).padStart(2, "0");
+  const mm = String(now.getMinutes()).padStart(2, "0");
+  const stamp = `${today} ${hh}:${mm}`;
   const ini = (initials ?? getStoredInitials()).trim().toUpperCase();
   const entry = ini
-    ? `Date: ${today} [${ini}] Change: ${change}`
-    : `Date: ${today} Change: ${change}`;
+    ? `Date: ${stamp} [${ini}] Change: ${change}`
+    : `Date: ${stamp} Change: ${change}`;
   const prev = (existing ?? "").trim();
   return prev ? `${prev}${SEP}${entry}` : entry;
 }
