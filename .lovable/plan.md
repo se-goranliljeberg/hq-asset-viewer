@@ -1,68 +1,110 @@
 
 
-## Username-as-master imports + Active/Skanska columns + stale-logon highlighting + Manager filter
+## Asset Lifecycle Management
 
-### 1. Schema additions
+Today each row is a snapshot of "user + computer". We're extending the model so a **computer is a first-class asset** with its own lifecycle (`In stock → Deployed at user → In stock → Sent back to broker`), full history, and user-history rollups. Existing data keeps working; the new behaviours layer on top.
 
-**`src/lib/asset-edits.ts`** — extend `AssetEdits`:
-- `userActive?: "yes" | "no" | ""` (default treated as "yes" when unset)
-- `skanskaComputer?: "yes" | "no" | ""` (empty when row has no computername; default "yes" otherwise)
+---
 
-**`src/lib/excel-parser.ts`** — add canonical fields `"User Active?"` and `"Skanska computer?"` with aliases (`enabled`, `accountdisabled`, `active`, `disabled` / `skanska computer`, `company device`, `corporate device`). Parse common truthy strings ("yes/no/true/false/1/0/enabled/disabled") into `"yes"`/`"no"` and seed into `edits` (similar to Status/Warranty seeding). On rows with empty Computername, set `skanskaComputer = ""`.
+### 1. Data model changes (`src/lib/asset-types.ts`, `asset-edits.ts`)
 
-### 2. Username-as-master duplicate handling
+Add lifecycle fields to `AssetRow` (all optional → backward compatible):
 
-**New file `src/components/ImportConflictDialog.tsx`** — modal listing each duplicate username (case-insensitive match against existing rows). For every conflicting row, show only fields where `existing !== incoming && incoming !== ""`. Each field has a checkbox (default off = keep existing). Header has "Select all" / "Skip all" per row. On confirm, returns a `Map<existingRowId, Set<fieldName>>`.
+```ts
+type LifecycleState = "In stock" | "Deployed at user" | "Sent back to broker";
 
-**`src/lib/excel-parser.ts`** — new helper `detectUsernameConflicts(existing, incoming)` returning `{ conflicts: Array<{ existingRow, incomingRow, diffs: Array<{field, oldVal, newVal}> }>, nonConflicting: AssetRow[] }`. Username matching is case-insensitive; rows without a username fall back to existing email/computername behavior (unchanged).
+interface LifecycleEvent {
+  at: string;                 // ISO timestamp
+  by: string;                 // user initials (existing system)
+  from?: LifecycleState | "";
+  to: LifecycleState;
+  user?: string;              // assigned-to user at the moment of the event
+  prevUser?: string;          // user being unassigned
+  note?: string;
+}
 
-**`src/components/AssetViewer.tsx`** — modify `handleImportAdd` (and `handleImportEnrich`) flow:
-1. After parse, run `detectUsernameConflicts`.
-2. If conflicts exist → open `ImportConflictDialog` with the diff list.
-3. On confirm: apply chosen field updates to existing rows (raw + canonical fields, plus `seedEdits` for Status/Warranty/userActive/skanskaComputer), append a single combined audit comment per row (`"Imported update: <field> from \"…\" to \"…\", …"`), then append truly-new (non-conflicting) rows via the existing `mergeData` path.
-4. Update `importedAt` timestamps for the overwritten fields only.
+interface AssetRow {
+  // existing fields...
+  assetKind?: "computer" | "user-only";   // default "computer" when computername present
+  history?: LifecycleEvent[];             // append-only lifecycle log
+  previousUsers?: string[];               // distinct usernames who held this asset
+}
+```
 
-The existing "Add / Replace / Enrich" mode dialog stays; conflict resolution runs after the user picks "Add" or "Enrich".
+`Status` (already on `AssetEdits`) becomes the canonical lifecycle state. We add a small helper `recordLifecycleEvent(row, edits, event)` that appends to `history`, updates `previousUsers`, and writes a human comment via the existing `appendComment` audit log.
 
-### 3. Exceptions and default filters
+### 2. Replace Device flow → split into two rows
 
-**`src/lib/excel-parser.ts`** — when building exceptions, add `"Inactive user"` when `userActive === "no"`. (Skanska false is not an exception — it's a category, filtered separately.)
+`ReplaceDeviceDialog` (existing) and `handleReplaceDevice` (`AssetViewer.tsx` line ~746) currently overwrite the same row. New behaviour:
 
-**`src/components/AssetViewer.tsx`** — new persisted filter `excludeInactive` (default `true`) and `skanskaFilter` ("all" | "skanska" | "non-skanska", default `"skanska"`). Both stored in localStorage alongside other filters, applied in the `filtered` memo. New filter chips appear in `ActiveFilterChips` when they diverge from default.
+- **Old asset** stays as its own row, user cleared, `Status` set to user's choice (`In stock` default, or `Sent back to broker`), lifecycle event `Deployed at user → <chosen>` recorded with `prevUser`.
+- **New asset** becomes a new row with the user attached, `Status = Deployed at user`, lifecycle event `(none) → Deployed at user` recorded.
+- Dialog gets a new section: **"Source of replacement device"** with two tabs:
+  - *New device* — current Computername / Modell / Warranty inputs.
+  - *From In Stock* — searchable list of existing rows where `Status = "In stock"` and no user assigned. Picking one re-assigns that row instead of creating a new one (records `In stock → Deployed at user` event).
 
-### 4. Stale Last logon date
+### 3. Multi-computer per user — collapsed display + exception
 
-**New `src/lib/stale-config.ts`** — `loadStaleThreshold()` / `saveStaleThreshold()`, default 90 days, key `hq_stale_threshold_days`.
+When several rows share the same `user` (case-insensitive, trimmed), the asset list shows them as **separate rows** as today (so each computer keeps its own status/warranty), but:
 
-**`src/components/AssetTable.tsx`** — when rendering the `Last logon date` cell, compute days-since; if `> threshold`, wrap value in subtle warning style (`text-amber-600 dark:text-amber-400` + small icon), keep the existing import-timestamp tooltip and add `"X days since last logon"` to the tooltip line.
+- Each such row gets a new **"Multi-device"** badge in the Computername cell (small chip with count, e.g. `2 of 3`), with a tooltip listing the sibling computernames.
+- A new exception **"User has multiple computers"** is added in `effectiveExceptions` whenever `_multiComputerUsers` (computed once per dataset and passed in) contains the row's user. The existing exception flow + KPI counter picks it up automatically.
+- The Audit Report's **Multi-Computer** KPI already exists — it stays, now backed by the same set.
 
-**`src/components/KpiCards.tsx`** — add fifth KPI key `"stale"` showing count of rows with stale logon. Clicking it filters to those rows (mirrors existing exceptions card behavior). Switch grid to `md:grid-cols-5`.
+(Why separate rows rather than one merged row: each device has its own warranty, status, history. A merged row would lose that. The badge gives the "shown together" feel without sacrificing per-asset truth.)
 
-**Threshold control**: small inline input in `FilterBar` (or next to the Stale KPI) — number input "Stale after __ days", persisted.
+### 4. Import — duplicate-asset prompt
 
-### 5. Manager filter
+`detectUsernameConflicts` (in `excel-parser.ts`) is reused. A new sibling helper `detectUserMultiAssetIncoming` runs *after* conflict resolution and finds incoming rows whose username already has a Computername in the dataset with a *different* incoming Computername. The user is prompted via a new lightweight dialog (`MultiAssetImportDialog`) per affected user with three options:
 
-**`src/components/FilterBar.tsx`** — add a `MultiSelect` for Manager, identical pattern to model/user filters.
+1. **Add as additional device** (default) — adds the new row, leaves the old assignment, both rows get the multi-device badge & exception.
+2. **Replace** — runs the same split-into-two-rows flow as §2, asking "Send old device to: In stock / Sent back to broker".
+3. **Skip** — drops the incoming row.
 
-**`src/components/AssetViewer.tsx`** — add `managerFilter` state with localStorage key `hq_filter_managers`, derive `managers` list from `rows[].raw["Manager"]`, apply in `filtered` memo, and add chips to `activeChips`.
+### 5. Asset history side panel (`AssetHistoryDrawer.tsx`, new)
 
-### 6. Table column defaults
+A new "History" button appears in the row actions (selection toolbar, plus a clock icon when a single row is selected). Opens a Sheet showing:
 
-**`src/components/AssetTable.tsx`** — extend `CANONICAL_ORDER` with `"User Active?"` and `"Skanska computer?"`, add both to `VIRTUAL_CANONICAL` so they always appear. Render as Yes/No `Select` cells (similar to Status), reading/writing via `onEdit` to `edits.userActive` / `edits.skanskaComputer`.
+- **Lifecycle timeline** for this asset — events from `row.history`, plus seeded "Imported on …" entries from `importMeta`.
+- **Current user** + **Previous users** list (clickable → filters table by that user).
+- **Comments / audit log** (re-uses the existing `parseEntries` view).
+
+### 6. User history view (Audit Report)
+
+In `AuditDashboard.tsx`, clicking a row in **Per-User Detail** opens a "User profile" Sheet showing:
+
+- Current device(s) assigned.
+- **Past devices** — derived from any row whose `previousUsers` includes this user, OR any row currently no-user whose history mentions this user.
+- Lifecycle events filtered to those touching this user.
+
+### 7. localStorage persistence
+
+`AssetData` already persists via `saveData`. The new fields (`history`, `previousUsers`, `assetKind`) ride along inside `AssetData.rows`, so no new keys are needed. A one-time migration in the existing `migrateToCanonical` flow (or a new `migrateLifecycle` flag `hq_lifecycle_migrated_v1`) backfills `assetKind` for existing rows: `computername` non-empty → `"computer"`, else `"user-only"`. Empty `history` arrays are left implicit.
+
+### 8. Documentation & changelog
+
+- New User Guide section "Asset lifecycle" covering: what the four states mean, how Replace Device works, how multi-computer users show up, how to read the History drawer and User profile.
+- Changelog entry for v0.4.0 (minor bump — this is a new capability, not a patch).
+
+---
 
 ### Files touched
 
-- **Edit** `src/lib/asset-edits.ts` — add `userActive`, `skanskaComputer` fields.
-- **Edit** `src/lib/excel-parser.ts` — new canonical fields, aliases, conflict detection helper, inactive-user exception.
-- **Create** `src/lib/stale-config.ts` — threshold persistence.
-- **Create** `src/components/ImportConflictDialog.tsx` — conflict resolution UI.
-- **Edit** `src/components/AssetViewer.tsx` — wire conflict dialog into import flow, add Manager / Active / Skanska / stale filters & state, threshold control, default filters.
-- **Edit** `src/components/AssetTable.tsx` — new columns, stale logon styling, threshold-aware tooltip.
-- **Edit** `src/components/KpiCards.tsx` — add Stale Accounts card, switch to 5-column grid.
-- **Edit** `src/components/FilterBar.tsx` — add Manager multi-select, Skanska tri-state, Inactive toggle, threshold input.
+**Edited**
+- `src/lib/asset-types.ts` — new lifecycle types on `AssetRow`.
+- `src/lib/asset-edits.ts` — `recordLifecycleEvent`, "User has multiple computers" exception support.
+- `src/lib/excel-parser.ts` — `detectUserMultiAssetIncoming`, migration backfill for `assetKind`.
+- `src/lib/asset-store.ts` — new migration flag, no schema-level changes.
+- `src/components/AssetViewer.tsx` — split-row replace flow, multi-asset import dialog wiring, computing `multiComputerUsers` set, passing it down, history drawer state.
+- `src/components/ReplaceDeviceDialog.tsx` — tabs for New / From In Stock, "send old device to" choice.
+- `src/components/AssetTable.tsx` — Multi-device badge in Computername cell, "History" affordance.
+- `src/components/AuditDashboard.tsx` — clickable user rows → User profile drawer.
+- `src/components/KpiCards.tsx` — no logic change (multi-computer already counted via exceptions).
+- `src/routes/documentation.user-guide.tsx`, `documentation.changelog.tsx`.
+- `package.json` → 0.4.0.
 
-### Out of scope
-
-- Changelog/version bump (separate `npm run bump` step).
-- Bulk-editing Active/Skanska across selected rows (can be added later).
+**New**
+- `src/components/AssetHistoryDrawer.tsx`
+- `src/components/UserHistoryDrawer.tsx`
+- `src/components/MultiAssetImportDialog.tsx`
 
