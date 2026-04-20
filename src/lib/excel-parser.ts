@@ -1,6 +1,6 @@
 import * as XLSX from "xlsx";
 import type { AssetRow, AssetData } from "./asset-types";
-import type { AssetEdits, AssetStatus } from "./asset-edits";
+import type { AssetEdits, AssetStatus, YesNo } from "./asset-edits";
 import { STATUS_OPTIONS } from "./asset-edits";
 
 // Columns we add on export that are derived/computed, not source data.
@@ -24,6 +24,8 @@ export const CANONICAL_FIELDS = [
   "Email",
   "Department",
   "Manager",
+  "User Active?",
+  "Skanska computer?",
 ] as const;
 
 export type CanonicalField = (typeof CANONICAL_FIELDS)[number];
@@ -49,6 +51,8 @@ const ALIASES: Record<CanonicalField, string[]> = {
   Email: ["email", "mail", "e-mail", "userprincipalname", "upn", "email address"],
   Department: ["department", "dept", "avdelning"],
   Manager: ["manager", "reports to", "chef", "linemanager", "line manager", "supervisor"],
+  "User Active?": ["user active", "useractive", "active", "enabled", "accountdisabled", "account disabled", "disabled", "is active", "isactive"],
+  "Skanska computer?": ["skanska computer", "skanskacomputer", "skanska device", "company device", "corporate device", "company computer", "corporate computer"],
 };
 
 // Substring patterns for fuzzy matches (when alias miss).
@@ -66,6 +70,8 @@ const FUZZY_SUBSTRINGS: Record<CanonicalField, string[]> = {
   Email: ["email", "mail", "upn"],
   Department: ["department", "dept"],
   Manager: ["manager", "supervisor"],
+  "User Active?": ["active", "enabled", "disabled"],
+  "Skanska computer?": ["skanska", "company device", "corporate device"],
 };
 
 export interface MappingDetection {
