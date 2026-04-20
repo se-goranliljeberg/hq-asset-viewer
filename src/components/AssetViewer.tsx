@@ -38,6 +38,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Upload, Trash2, Download, ShieldCheck, RefreshCw, Plus, Bug, BookOpen } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { AddRowDialog } from "./AddRowDialog";
+import { ReplaceDeviceDialog } from "./ReplaceDeviceDialog";
 import { ImportDebugger } from "./ImportDebugger";
 import { ColumnMappingDialog } from "./ColumnMappingDialog";
 import { InitialsPromptDialog } from "./InitialsPromptDialog";
@@ -130,6 +131,7 @@ export function AssetViewer() {
   const [pendingSheets, setPendingSheets] = useState<string[]>([]);
   const [importModeOpen, setImportModeOpen] = useState(false);
   const [addRowOpen, setAddRowOpen] = useState(false);
+  const [replaceOpen, setReplaceOpen] = useState(false);
   const [debugOpen, setDebugOpen] = useState(false);
   const [pendingIsUsersFile, setPendingIsUsersFile] = useState(false);
   const pendingBuffer = useRef<ArrayBuffer | null>(null);
