@@ -647,6 +647,14 @@ export function AssetViewer() {
         setConflictOpen(true);
         return;
       }
+      // No username conflicts — check for multi-asset cases (incoming computer
+      // for an existing user that already owns one).
+      const multiCases = detectUserMultiAssetIncoming(data, incoming);
+      if (multiCases.length > 0) {
+        setPendingMultiAssetCases(multiCases);
+        setMultiAssetOpen(true);
+        return;
+      }
       // No conflicts — proceed with merge as before.
       const merged = mergeData(data, incoming);
       setData(merged);
