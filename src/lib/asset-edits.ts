@@ -98,6 +98,12 @@ export function effectiveExceptions(
 
   let result = row.exceptions.slice();
 
+  // Computername was added after import → drop stale "missing computer" tags
+  // that were seeded at parse time when the field was still empty.
+  if (hasComputer) {
+    result = result.filter((e) => !MISSING_COMPUTER_EXCEPTIONS.has(e));
+  }
+
   // Skanska = No → suppress "missing computer" family.
   if (skanska === "no") {
     result = result.filter((e) => !MISSING_COMPUTER_EXCEPTIONS.has(e));
