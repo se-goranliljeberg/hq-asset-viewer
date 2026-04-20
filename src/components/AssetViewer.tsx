@@ -561,20 +561,17 @@ export function AssetViewer() {
         };
         setData(updatedData);
 
-        // Append a single audit entry summarising the swap, plus a warranty entry if provided.
+        // Append a single combined audit entry summarising the swap (incl. warranty if provided).
         setEditsState((prev) => {
           const key = getEditKey(rowId);
           const current = prev[key] ?? { status: "", warrantyUntil: "" };
-          const summary = `Device replaced: Computername from "${oldComputername || "(empty)"}" to "${newComputername}", Modell from "${oldModell || "(empty)"}" to "${newModell}"`;
-          let comment = appendComment(current.comment, summary);
+          let summary = `Device replaced: Computername from "${oldComputername || "(empty)"}" to "${newComputername}", Modell from "${oldModell || "(empty)"}" to "${newModell}"`;
           let nextWarranty = current.warrantyUntil;
           if (warrantyUntil) {
-            comment = appendComment(
-              comment,
-              describeChange("Warranty until", current.warrantyUntil ?? "", warrantyUntil),
-            );
+            summary += `, Warranty until from "${current.warrantyUntil || "(empty)"}" to "${warrantyUntil}"`;
             nextWarranty = warrantyUntil;
           }
+          const comment = appendComment(current.comment, summary);
           const next = {
             ...prev,
             [key]: { ...current, warrantyUntil: nextWarranty, comment },
