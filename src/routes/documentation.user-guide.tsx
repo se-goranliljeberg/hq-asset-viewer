@@ -181,7 +181,8 @@ function UserGuide() {
           <li>
             <strong>User Active?</strong> — Whether the user is still with the company. Defaults
             to <em>Yes</em>. Set to <em>No</em> for leavers; the row is automatically tagged with
-            an <em>Inactive user</em> exception and hidden by default (see §10).
+            an <em>Inactive user</em> exception. The <em>Hide inactive</em> filter is OFF by
+            default — toggle it on to hide leavers (your choice is persisted, see §10).
           </li>
           <li>
             <strong>Skanska computer?</strong> — Whether the asset is a Skanska-issued device.
@@ -194,6 +195,32 @@ function UserGuide() {
           <code> enabled</code>, <code> disabled</code>, <code> company device</code>, etc.),
           inline-editable, and included in CSV exports.
         </p>
+        <p className="mt-2">
+          <strong>Dynamic exceptions.</strong> The Exceptions column adapts to these two
+          fields in real time:
+        </p>
+        <ul className="list-disc list-inside space-y-1 mt-1">
+          <li>
+            <strong>Skanska computer? = No</strong> → the user is not expected to have a
+            Skanska device, so <em>Missing computer</em> is suppressed for that row.
+          </li>
+          <li>
+            <strong>User Active? = No + has Computername</strong> → adds a new
+            <em> Assigned to inactive user</em> exception so leavers still holding company
+            hardware are easy to spot. The Audit Report has a dedicated
+            <em> Leavers w/ Device</em> KPI for this.
+          </li>
+          <li>
+            <strong>User Active? = No + no Computername</strong> → suppresses
+            <em> Missing computer</em> (we don&rsquo;t expect leavers to have a device).
+            Only the <em>Inactive user</em> tag remains.
+          </li>
+          <li>
+            <strong>User Active? = Yes</strong> → any stale <em>Inactive user</em> /
+            <em> Assigned to inactive user</em> tags from the source file are stripped
+            automatically.
+          </li>
+        </ul>
       </Section>
 
       <Section id="stale" title="9. Stale logon highlighting">
@@ -217,16 +244,19 @@ function UserGuide() {
             <code> Manager </code> column of the source file. Persisted to localStorage.
           </li>
           <li>
-            <strong>Hide inactive</strong> — on by default; hides rows where User Active? = No.
-            Toggle off to see all users.
+            <strong>Hide inactive</strong> — OFF by default; turn on to hide rows where
+            User Active? = No. Your preference is saved per browser.
           </li>
           <li>
             <strong>Skanska computer?</strong> — tri-state filter (All / Skanska / Non-Skanska).
             Defaults to <em>Skanska only</em>, which excludes BYOD and rows with empty
-            Computername.
+            Computername. Persisted to localStorage.
           </li>
         </ul>
-        <p className="mt-2">All three appear as removable chips in the active-filters row.</p>
+        <p className="mt-2">All three appear as removable chips in the active-filters row. Use
+          <strong> Reset filters</strong> in the FilterBar to restore every setting to its
+          app-level default in one click.
+        </p>
       </Section>
 
       <Section id="batch" title="11. Batch updates">
@@ -261,13 +291,20 @@ function UserGuide() {
       </Section>
 
       <Section id="exceptions" title="14. Exceptions">
-        <p>The Exceptions column flags rows that need attention:</p>
+        <p>The Exceptions column flags rows that need attention. The set is computed
+          dynamically: editing User Active? or Skanska computer? updates the Exceptions cell,
+          the Exceptions KPI and the audit report immediately (see §8 for the full ruleset).</p>
         <ul className="list-disc list-inside space-y-1 mt-1">
           <li><strong>Missing user</strong> — Computer record has no associated user.</li>
-          <li><strong>Missing computer</strong> — User has no computer assigned.</li>
+          <li><strong>Missing computer</strong> — User has no computer assigned. Suppressed
+            when Skanska computer? = No, or when User Active? = No and there is no
+            Computername.</li>
           <li><strong>Inactive &gt; 90 days</strong> — Last account activity is stale.</li>
           <li><strong>Warranty expired</strong> — Warranty date has passed.</li>
-          <li><strong>Inactive user</strong> — User Active? is set to No (default-hidden).</li>
+          <li><strong>Inactive user</strong> — User Active? is set to No.</li>
+          <li><strong>Assigned to inactive user</strong> — User Active? = No but the row still
+            has a Computername. Surfaces in the &ldquo;Leavers w/ Device&rdquo; KPI on the
+            Audit Report.</li>
         </ul>
       </Section>
 

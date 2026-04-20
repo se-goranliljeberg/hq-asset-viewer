@@ -125,11 +125,11 @@ export function AssetViewer() {
     loadFilterFromStorage(FILTER_STORAGE_KEYS.status, defaultStatusFilter),
   );
   const [excludeInactive, setExcludeInactive] = useState<boolean>(() => {
-    if (typeof window === "undefined") return true;
+    if (typeof window === "undefined") return false;
     try {
       const raw = localStorage.getItem(FILTER_STORAGE_KEYS.excludeInactive);
-      return raw === null ? true : raw === "true";
-    } catch { return true; }
+      return raw === null ? false : raw === "true";
+    } catch { return false; }
   });
   const [skanskaFilter, setSkanskaFilter] = useState<SkanskaFilter>(() => {
     if (typeof window === "undefined") return "skanska";
@@ -882,7 +882,7 @@ export function AssetViewer() {
     setManagerFilter([]);
     setStatusFilter(defaultStatusFilter);
     setExceptionsOnly(false);
-    setExcludeInactive(true);
+    setExcludeInactive(false);
     setSkanskaFilter("skanska");
     setSort({ column: "", dir: null });
     setConfirmClear(false);
@@ -910,7 +910,7 @@ export function AssetViewer() {
     setSourceFilter([]);
     setStatusFilter(defaultStatusFilter);
     setExceptionsOnly(false);
-    setExcludeInactive(true);
+    setExcludeInactive(false);
     setSkanskaFilter("skanska");
     setActiveCard(null);
     toast.success("Filters reset to defaults.");

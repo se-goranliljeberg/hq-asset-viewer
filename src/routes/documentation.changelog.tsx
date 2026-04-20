@@ -28,6 +28,22 @@ interface Release {
 
 const RELEASES: Release[] = [
   {
+    version: "0.3.3",
+    date: "2026-04-20",
+    title: "Dynamic exceptions, Leavers w/ Device KPI & Hide-inactive default off",
+    added: [
+      "New 'Assigned to inactive user' exception: rows where User Active? = No but a Computername is still assigned are now flagged automatically — these are leavers who still hold company hardware.",
+      "New 'Leavers w/ Device' KPI on the Audit Report (User Roll-Up section) counting distinct inactive users with at least one assigned Computername. Tooltip explains exactly what it counts.",
+    ],
+    changed: [
+      "Exceptions are now computed dynamically from the current User Active? / Skanska computer? values instead of being frozen at import time. Toggling either field updates the Exceptions cell, the Exceptions KPI, the Exceptions-only filter and the audit report immediately — no re-import needed.",
+      "Skanska computer? = No now suppresses the 'Missing computer' / 'User without computer' exceptions: the user is not expected to have a Skanska device, so it shouldn't count as a data-quality issue.",
+      "User Active? = No with no Computername also suppresses 'Missing computer'; only 'Inactive user' remains. Toggling Active back to Yes strips any leftover 'Inactive user' / 'Assigned to inactive user' tags inherited from the source file.",
+      "Hide inactive filter now defaults to OFF (was ON). Your choice is still persisted to localStorage (hq_filter_exclude_inactive), so previous installs keep their preference.",
+      "User Guide §8 (User Active? & Skanska computer?), §10 (Filters) and §14 (Exceptions) rewritten to describe the dynamic exception ruleset and the new Hide-inactive default.",
+    ],
+  },
+  {
     version: "0.3.2",
     date: "2026-04-20",
     title: "User-centric Audit Report & KPI tooltips",
