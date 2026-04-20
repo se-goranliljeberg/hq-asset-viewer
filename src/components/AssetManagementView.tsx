@@ -285,11 +285,15 @@ function KpiTile({
   label,
   value,
   tone,
+  active,
+  onClick,
 }: {
   icon: React.ReactNode;
   label: string;
   value: number;
   tone: "primary" | "default" | "muted" | "warning";
+  active?: boolean;
+  onClick?: () => void;
 }) {
   const toneClass =
     tone === "primary"
@@ -299,17 +303,32 @@ function KpiTile({
         : tone === "muted"
           ? "border-border bg-muted/30"
           : "border-border";
-  return (
-    <Card className={toneClass}>
-      <CardContent className="p-4">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wide">
-          {icon}
-          <span>{label}</span>
-        </div>
-        <div className="mt-1 text-2xl font-semibold">{value}</div>
-      </CardContent>
-    </Card>
+  const interactive = onClick
+    ? "cursor-pointer hover:shadow-md transition-shadow"
+    : "";
+  const activeRing = active ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : "";
+  const inner = (
+    <CardContent className="p-4">
+      <div className="flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wide">
+        {icon}
+        <span>{label}</span>
+      </div>
+      <div className="mt-1 text-2xl font-semibold">{value}</div>
+    </CardContent>
   );
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        aria-pressed={active}
+        className="text-left w-full"
+      >
+        <Card className={`${toneClass} ${interactive} ${activeRing}`}>{inner}</Card>
+      </button>
+    );
+  }
+  return <Card className={`${toneClass} ${activeRing}`}>{inner}</Card>;
 }
 
 function DeviceTable({
