@@ -584,9 +584,32 @@ export function AssetViewer() {
     setImportModeOpen(false);
     if (pendingParsed.current && data) {
       const incoming = pendingParsed.current;
+      // Detect username conflicts first.
+      const { conflicts, nonConflicting } = detectUsernameConflicts(
+        data, incoming, pendingSeedEdits.current, edits,
+      );
+      if (conflicts.length > 0) {
+        // Stash filtered incoming for the post-conflict step.
+        pendingParsed.current = { ...incoming, rows: nonConflicting.map((n) => n.row) };
+        // Remap seed edits to the filtered incoming list (re-index to 0..N).
+        const newSeed: Record<string, AssetEdits> = {};
+        const newStamps: Record<number, Record<string, string>> = {};
+        nonConflicting.forEach((n, newIdx) => {
+          const oldSeed = pendingSeedEdits.current[String(n.incomingIdx)];
+          if (oldSeed) newSeed[String(newIdx)] = oldSeed;
+          const oldStamps = pendingImportedAt.current[n.incomingIdx];
+          if (oldStamps) newStamps[newIdx] = oldStamps;
+        });
+        pendingSeedEdits.current = newSeed;
+        pendingImportedAt.current = newStamps;
+        setPendingConflicts(conflicts);
+        pendingMode.current = "add";
+        setConflictOpen(true);
+        return;
+      }
+      // No conflicts — proceed with merge as before.
       const merged = mergeData(data, incoming);
       setData(merged);
-      // mergeData reindexes incoming rows: new id = maxExistingId + 1 + originalIndex.
       const maxExistingId = data.rows.reduce((m, r) => Math.max(m, r.id), -1);
       const remappedSeed: Record<string, AssetEdits> = {};
       for (const [oldKey, seed] of Object.entries(pendingSeedEdits.current)) {
@@ -602,7 +625,57 @@ export function AssetViewer() {
       pendingSeedEdits.current = {};
       pendingImportedAt.current = {};
     }
-  }, [data, setData, applySeedEdits, mergeAndPersistMeta, remapImportedAt]);
+  }, [data, edits, setData, applySeedEdits, mergeAndPersistMeta, remapImportedAt]);
+
+  const handleConflictApply = useCallback((resolutions: ConflictResolutions) => {
+    setConflictOpen(false);
+    applyConflictResolutions(resolutions);
+    // Continue with non-conflicting rows via the original mode flow.
+    if (data && pendingParsed.current && pendingParsed.current.rows.length > 0) {
+      const incoming = pendingParsed.current;
+      if (pendingMode.current === "enrich") {
+        const merged = enrichWithUsers(data, incoming);
+        setData(merged);
+        const maxExistingId = data.rows.reduce((m, r) => Math.max(m, r.id), -1);
+        const remappedSeed: Record<string, AssetEdits> = {};
+        incoming.rows.forEach((_row, i) => {
+          const seed = pendingSeedEdits.current[String(i)];
+          if (seed) remappedSeed[String(maxExistingId + 1 + i)] = seed;
+        });
+        applySeedEdits(remappedSeed);
+        mergeAndPersistMeta(remapImportedAt(incoming.rows.length, (i) => maxExistingId + 1 + i));
+        toast.success(`Resolved conflicts and enriched — total rows: ${merged.rows.length}`);
+      } else {
+        const merged = mergeData(data, incoming);
+        setData(merged);
+        const maxExistingId = data.rows.reduce((m, r) => Math.max(m, r.id), -1);
+        const remappedSeed: Record<string, AssetEdits> = {};
+        for (const [oldKey, seed] of Object.entries(pendingSeedEdits.current)) {
+          const oldIdx = Number(oldKey);
+          if (Number.isFinite(oldIdx)) remappedSeed[String(maxExistingId + 1 + oldIdx)] = seed;
+        }
+        applySeedEdits(remappedSeed);
+        mergeAndPersistMeta(remapImportedAt(incoming.rows.length, (i) => maxExistingId + 1 + i));
+        toast.success(`Resolved conflicts and added ${incoming.rows.length} new rows`);
+      }
+    } else {
+      toast.success("Resolved duplicate-username conflicts.");
+    }
+    pendingParsed.current = null;
+    pendingSeedEdits.current = {};
+    pendingImportedAt.current = {};
+    setPendingConflicts([]);
+  }, [data, setData, applySeedEdits, mergeAndPersistMeta, remapImportedAt, applyConflictResolutions]);
+
+  const handleConflictCancel = useCallback(() => {
+    setConflictOpen(false);
+    setPendingConflicts([]);
+    pendingParsed.current = null;
+    pendingSeedEdits.current = {};
+    pendingImportedAt.current = {};
+    toast.info("Import cancelled.");
+  }, []);
+
 
 
   const handleAddRow = useCallback((raw: Record<string, string>, status: AssetStatus, warrantyUntil: string) => {
