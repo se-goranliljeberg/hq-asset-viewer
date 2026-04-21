@@ -81,6 +81,12 @@ function isCsvFile(file: File): boolean {
   return mime === "text/csv" || mime === "application/csv" || mime === "application/vnd.ms-excel";
 }
 
+/**
+ * Decode CSV bytes using BOM-aware detection (UTF-8/UTF-16 LE/BE), then
+ * strict UTF-8 with a Windows-1252 fallback when no BOM is present.
+ * The decoded text is re-encoded to UTF-8 with BOM so SheetJS parses
+ * multilingual characters consistently across browsers.
+ */
 function normalizeCsvBufferEncoding(buffer: ArrayBuffer): ArrayBuffer {
   const bytes = new Uint8Array(buffer);
   if (bytes.length === 0) return buffer;
@@ -106,7 +112,8 @@ function normalizeCsvBufferEncoding(buffer: ArrayBuffer): ArrayBuffer {
   withBom[1] = 0xbb;
   withBom[2] = 0xbf;
   withBom.set(encoded, 3);
-  return withBom.buffer;
+  // Return the exact byte window represented by this Uint8Array.
+  return withBom.buffer.slice(withBom.byteOffset, withBom.byteOffset + withBom.byteLength);
 }
 
 function loadFilterFromStorage(key: string, fallback: string[]): string[] {
