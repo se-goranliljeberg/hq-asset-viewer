@@ -643,11 +643,28 @@ export function AssetViewer() {
     const stamps = pendingImportedAt.current;
     const importIso = new Date().toISOString();
 
-    // Build incoming row by id (use existingRowId from conflicts).
+    // Build incoming row by existingId from BOTH conflicts and autoFills.
     const incomingByExistingId = new Map<number, { row: AssetRow; idx: number }>();
     for (const c of pendingConflicts) {
       incomingByExistingId.set(c.existingRow.id, { row: c.incomingRow, idx: c.incomingIdx });
     }
+    for (const [existingId, info] of pendingAutoFills.current.entries()) {
+      if (!incomingByExistingId.has(existingId)) {
+        const incRow = incoming.rows[info.incomingIdx];
+        if (incRow) incomingByExistingId.set(existingId, { row: incRow, idx: info.incomingIdx });
+      }
+    }
+
+    // Merge autoFills into the resolutions map (silent fills get applied too).
+    const merged: ConflictResolutions = new Map();
+    for (const [k, v] of resolutions.entries()) merged.set(k, new Set(v));
+    for (const [existingId, info] of pendingAutoFills.current.entries()) {
+      const set = merged.get(existingId) ?? new Set<string>();
+      for (const f of info.fields) set.add(f);
+      merged.set(existingId, set);
+    }
+    resolutions = merged;
+    void stamps;
 
     const newImportedAt: ImportMeta = {};
     const newSeedPatch: Record<string, AssetEdits> = {};
