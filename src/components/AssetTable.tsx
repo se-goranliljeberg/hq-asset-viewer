@@ -205,23 +205,94 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
     [displayCols, colWidths],
   );
 
+  // ── Per-column Excel-style filters ───────────────────────────────────────
+  // Empty array (or missing entry) => no filter on that column.
+  const [columnFilters, setColumnFilters] = useState<Record<string, string[]>>(
+    () => loadColumnFilters(),
+  );
+  useEffect(() => { saveColumnFilters(columnFilters); }, [columnFilters]);
+
+  /** Resolve the displayed string value for a row + column, mirroring how the cell renders. */
+  const getCellValue = useCallback(
+    (row: AssetRow, col: string): string => {
+      const editKey = getEditKey(row.id);
+      const rowEdits = edits[editKey];
+      if (col === "Status") return rowEdits?.status ?? "";
+      if (col === "Warranty until") return rowEdits?.warrantyUntil ?? "";
+      if (col === "User Active?") return effectiveUserActive(rowEdits);
+      if (col === "Skanska computer?") return effectiveSkanska(rowEdits, row.computername);
+      if (col === COMMENTS_COL) return rowEdits?.comment ?? "";
+      if (col === "Exceptions") return effectiveExceptions(row, rowEdits).join(", ");
+      if (col === "Source file") return row.sourceFile;
+      if (col === "Username") return row.user || row.raw[col] || "";
+      if (col === "Computername") return row.computername || row.raw[col] || "";
+      return row.raw[col] ?? "";
+    },
+    [edits],
+  );
+
+  /** Distinct values per column, computed from the unfiltered row set. */
+  const distinctByColumn = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    for (const col of displayCols) {
+      const set = new Set<string>();
+      for (const r of rows) set.add(getCellValue(r, col));
+      map[col] = [...set];
+    }
+    return map;
+  }, [displayCols, rows, getCellValue]);
+
+  /** Apply per-column filters on top of the parent-supplied rows. */
+  const visibleRows = useMemo(() => {
+    const activeCols = Object.keys(columnFilters).filter(
+      (c) => columnFilters[c] && columnFilters[c].length > 0,
+    );
+    if (activeCols.length === 0) return rows;
+    return rows.filter((r) =>
+      activeCols.every((c) => {
+        const sel = columnFilters[c];
+        const v = getCellValue(r, c);
+        const token = v === "" ? COLUMN_FILTER_BLANK_TOKEN : v;
+        return sel.includes(token);
+      }),
+    );
+  }, [rows, columnFilters, getCellValue]);
+
+  const setColumnFilter = useCallback((col: string, next: string[]) => {
+    setColumnFilters((prev) => {
+      const updated = { ...prev };
+      if (next.length === 0) delete updated[col];
+      else updated[col] = next;
+      return updated;
+    });
+  }, []);
+
+  const clearAllColumnFilters = useCallback(() => setColumnFilters({}), []);
+  const activeColumnFilterCount = Object.keys(columnFilters).filter(
+    (c) => columnFilters[c] && columnFilters[c].length > 0,
+  ).length;
+
   const virtualizer = useVirtualizer({
-    count: rows.length,
+    count: visibleRows.length,
     getScrollElement: () => parentRef.current,
     estimateSize: () => 36,
     overscan: 20,
   });
 
-  const allSelected = rows.length > 0 && selectedIds.size === rows.length;
-  const someSelected = selectedIds.size > 0 && !allSelected;
+  const allSelected = visibleRows.length > 0 && visibleRows.every((r) => selectedIds.has(r.id));
+  const someSelected = visibleRows.some((r) => selectedIds.has(r.id)) && !allSelected;
 
   const handleSelectAll = useCallback(() => {
     if (allSelected) {
-      onSelectionChange(new Set());
+      const next = new Set(selectedIds);
+      for (const r of visibleRows) next.delete(r.id);
+      onSelectionChange(next);
     } else {
-      onSelectionChange(new Set(rows.map((r) => r.id)));
+      const next = new Set(selectedIds);
+      for (const r of visibleRows) next.add(r.id);
+      onSelectionChange(next);
     }
-  }, [allSelected, rows, onSelectionChange]);
+  }, [allSelected, visibleRows, selectedIds, onSelectionChange]);
 
   const handleSelectRow = useCallback((rowId: number) => {
     const next = new Set(selectedIds);
