@@ -25,6 +25,9 @@ import type { ImportMeta } from "@/lib/import-meta";
 import { getImportedAt } from "@/lib/import-meta";
 import { daysSince } from "@/lib/stale-config";
 import { ColumnFilterPopover, COLUMN_FILTER_BLANK_TOKEN } from "./ColumnFilterPopover";
+import {
+  ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuLabel, ContextMenuSeparator, ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 
 const COLUMN_FILTERS_STORAGE_KEY = "hq_column_filters_v1";
 
@@ -61,6 +64,10 @@ interface Props {
   onOpenUser?: (user: string) => void;
   /** Open the asset-history drawer for this row. */
   onOpenAsset?: (row: AssetRow) => void;
+  /** Visible rows after in-table filters. */
+  onVisibleRowsChange?: (rows: AssetRow[]) => void;
+  /** Whether any in-table column filters are active. */
+  onColumnFiltersActiveChange?: (active: boolean) => void;
 }
 
 const MIN_COL_W = 80;
@@ -69,10 +76,11 @@ const CHECKBOX_COL_W = 40;
 const EDITABLE_COLS = ["Status", "Warranty until"] as const;
 const NON_EDITABLE_COLS = new Set(["Exceptions", "Source file"]);
 const COMMENTS_COL = "Comments";
+const HIDDEN_COLUMN_KEYS = new Set(["last account activity", "lst account activity"]);
 
 // Canonical left-to-right display order.
 const CANONICAL_ORDER = [
-  "Username", "Name", "Computername", "Modell", "Last account activity", "Last logon date",
+  "Username", "Name", "Computername", "Modell", "Last logon date",
   "Status", "Warranty until", "AD Create.Date", "Company", "Email", "Department", "Manager",
   "User Active?", "Skanska computer?", "OU",
 ] as const;
@@ -86,14 +94,16 @@ const TAIL_COLS = ["Exceptions", COMMENTS_COL, "Source file"];
 // (virtual ones always included; the rest only when present in the source data),
 // then any extras, then Exceptions / Comments / Source file.
 function buildDefaultOrder(columns: string[]): string[] {
+  const isHidden = (c: string) => HIDDEN_COLUMN_KEYS.has(c.trim().toLowerCase());
   const present = new Set(columns);
   const canonical = CANONICAL_ORDER.filter(
-    (c) => VIRTUAL_CANONICAL.has(c) || present.has(c),
+    (c) => !isHidden(c) && (VIRTUAL_CANONICAL.has(c) || present.has(c)),
   );
   const extras = columns.filter(
     (c) =>
       !canonical.includes(c as (typeof CANONICAL_ORDER)[number]) &&
-      !TAIL_COLS.includes(c),
+      !TAIL_COLS.includes(c) &&
+      !isHidden(c),
   );
   return [...canonical, ...extras, ...TAIL_COLS];
 }
@@ -167,7 +177,7 @@ function InlineCell({ value, width, col, rowId, onCellEdit }: {
   );
 }
 
-export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellEdit, onUndoLast, selectedIds, onSelectionChange, importedAt, staleThreshold, onOpenUser, onOpenAsset }: Props) {
+export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellEdit, onUndoLast, selectedIds, onSelectionChange, importedAt, staleThreshold, onOpenUser, onOpenAsset, onVisibleRowsChange, onColumnFiltersActiveChange }: Props) {
   const parentRef = useRef<HTMLDivElement>(null);
 
   // Persisted column order
@@ -271,6 +281,53 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
   const activeColumnFilterCount = Object.keys(columnFilters).filter(
     (c) => columnFilters[c] && columnFilters[c].length > 0,
   ).length;
+  const onVisibleRowsChangeRef = useRef(onVisibleRowsChange);
+  useEffect(() => { onVisibleRowsChangeRef.current = onVisibleRowsChange; }, [onVisibleRowsChange]);
+  useEffect(() => { onVisibleRowsChangeRef.current?.(visibleRows); }, [visibleRows]);
+  const onColumnFiltersActiveChangeRef = useRef(onColumnFiltersActiveChange);
+  useEffect(() => { onColumnFiltersActiveChangeRef.current = onColumnFiltersActiveChange; }, [onColumnFiltersActiveChange]);
+  useEffect(() => {
+    onColumnFiltersActiveChangeRef.current?.(activeColumnFilterCount > 0);
+    return () => onColumnFiltersActiveChangeRef.current?.(false);
+  }, [activeColumnFilterCount]);
+
+  const getColumnLabel = useCallback((col: string): string => {
+    if (col === "Status") return "Computer Status";
+    if (col === "OU") return "User Location";
+    return col;
+  }, []);
+
+  const canRightClickFilter = useCallback((col: string): boolean => {
+    return col !== COMMENTS_COL && col !== "Exceptions";
+  }, []);
+  const applyRightClickFilter = useCallback((col: string, value: string) => {
+    const token = value === "" ? COLUMN_FILTER_BLANK_TOKEN : value;
+    setColumnFilter(col, [token]);
+  }, [setColumnFilter]);
+  const clearRightClickFilter = useCallback((col: string) => setColumnFilter(col, []), [setColumnFilter]);
+  const wrapRightClickFilter = useCallback((col: string, value: string, child: React.ReactNode) => {
+    if (!canRightClickFilter(col)) return child;
+    const hasFilterOnColumn = (columnFilters[col] ?? []).length > 0;
+    const hasAnyFilter = activeColumnFilterCount > 0;
+    return (
+      <ContextMenu key={col}>
+        <ContextMenuTrigger asChild>{child}</ContextMenuTrigger>
+        <ContextMenuContent className="w-64">
+          <ContextMenuLabel>{getColumnLabel(col)}</ContextMenuLabel>
+          <ContextMenuItem onClick={() => applyRightClickFilter(col, value)}>
+            Filter by “{value || "(blank)"}”
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem disabled={!hasFilterOnColumn} onClick={() => clearRightClickFilter(col)}>
+            Clear column filter
+          </ContextMenuItem>
+          <ContextMenuItem disabled={!hasAnyFilter} onClick={clearAllColumnFilters}>
+            Clear all column filters
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
+    );
+  }, [canRightClickFilter, columnFilters, activeColumnFilterCount, getColumnLabel, applyRightClickFilter, clearRightClickFilter, clearAllColumnFilters]);
 
   const virtualizer = useVirtualizer({
     count: visibleRows.length,
@@ -415,7 +472,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                   className="flex items-center gap-1 hover:text-foreground transition-colors min-w-0"
                   onClick={() => onSort(col)}
                 >
-                  <span className="truncate">{col}</span>
+                  <span className="truncate">{getColumnLabel(col)}</span>
                   {sortIcon(col)}
                 </button>
                 <ColumnFilterPopover
@@ -482,7 +539,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
 
                   if (col === "Status") {
                     const val = rowEdits?.status ?? "";
-                    return (
+                    const statusCell = (
                       <div key={col} className="px-1 py-0.5" style={{ width: w, minWidth: MIN_COL_W }}>
                         <Select
                           value={val || "__none__"}
@@ -500,6 +557,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                         </Select>
                       </div>
                     );
+                    return wrapRightClickFilter(col, val, statusCell);
                   }
 
                   if (col === "Warranty until") {
@@ -509,7 +567,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                       const parsed = parseISO(val);
                       if (!isNaN(parsed.getTime())) date = parsed;
                     }
-                    return (
+                    const warrantyCell = (
                       <div key={col} className="px-1 py-0.5" style={{ width: w, minWidth: MIN_COL_W }}>
                         <Popover>
                           <PopoverTrigger asChild>
@@ -538,6 +596,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                         </Popover>
                       </div>
                     );
+                    return wrapRightClickFilter(col, val, warrantyCell);
                   }
 
                   if (col === "User Active?" || col === "Skanska computer?") {
@@ -546,7 +605,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                     const effective: YesNo = isActive
                       ? effectiveUserActive(rowEdits)
                       : effectiveSkanska(rowEdits, row.computername);
-                    return (
+                    const yesNoCell = (
                       <div key={col} className="px-1 py-0.5" style={{ width: w, minWidth: MIN_COL_W }}>
                         <Select
                           value={effective || "__none__"}
@@ -569,6 +628,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                         </Select>
                       </div>
                     );
+                    return wrapRightClickFilter(col, effective, yesNoCell);
                   }
 
                   if (col === COMMENTS_COL) {
@@ -591,7 +651,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                   // Exceptions and Source file are read-only
                   if (NON_EDITABLE_COLS.has(col)) {
                     const val = col === "Exceptions" ? rowEffectiveExceptions.join(", ") : row.sourceFile;
-                    return (
+                    const readOnlyCell = (
                       <div
                         key={col}
                         className="truncate px-3 py-1.5"
@@ -605,12 +665,13 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                         )}
                       </div>
                     );
+                    return wrapRightClickFilter(col, val, readOnlyCell);
                   }
 
                   // Clickable Username / Computername — open the relevant drawer.
                   if (col === "Username" && onOpenUser) {
                     const val = row.user || row.raw[col] || "";
-                    return (
+                    const userCell = (
                       <div
                         key={col}
                         className="px-1 py-0.5 flex items-center"
@@ -630,10 +691,11 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                         )}
                       </div>
                     );
+                    return wrapRightClickFilter(col, val, userCell);
                   }
                   if (col === "Computername" && onOpenAsset) {
                     const val = row.computername || row.raw[col] || "";
-                    return (
+                    const computerCell = (
                       <div
                         key={col}
                         className="px-1 py-0.5 flex items-center"
@@ -653,6 +715,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                         )}
                       </div>
                     );
+                    return wrapRightClickFilter(col, val, computerCell);
                   }
 
                   // Editable raw data columns — double-click to edit
@@ -681,6 +744,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                       />
                     </div>
                   );
+                  const withRightClick = wrapRightClickFilter(col, val, cell);
                   if (isLastLogon && val) {
                     const stamp = importedAt ? getImportedAt(importedAt, row.id, col) : undefined;
                     let stampLabel: string | null = null;
@@ -694,7 +758,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                       return (
                         <Tooltip key={col}>
                           <TooltipTrigger asChild>
-                            <div>{cell}</div>
+                            <div>{withRightClick}</div>
                           </TooltipTrigger>
                           <TooltipContent>
                             {stampLabel && <div>Imported on {stampLabel}</div>}
@@ -708,7 +772,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                       );
                     }
                   }
-                  return cell;
+                  return withRightClick;
                 })}
               </div>
             );

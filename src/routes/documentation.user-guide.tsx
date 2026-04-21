@@ -39,6 +39,7 @@ const sections = [
   { id: "clear", label: "17. Clearing local data" },
   { id: "think", label: "18. What to think about" },
   { id: "troubleshooting", label: "19. Troubleshooting" },
+  { id: "asset-lifecycle", label: "20. Asset lifecycle" },
 ];
 
 function UserGuide() {
@@ -323,9 +324,10 @@ function UserGuide() {
 
       <Section id="export" title="16. Exporting">
         <p>
-          <strong>Export CSV</strong> downloads the currently filtered rows including all visible
-          columns plus Comments and Exceptions. The CSV is generated in your browser; no copy is
-          stored or transmitted anywhere.
+          <strong>Export CSV</strong> asks whether you want <strong>All data</strong> or{" "}
+          <strong>Filtered data</strong>. Filtered export respects active table filters (including
+          column/right-click filters). The CSV is generated in your browser; no copy is stored or
+          transmitted anywhere.
         </p>
       </Section>
 
@@ -376,6 +378,30 @@ function UserGuide() {
         <p className="mt-2">
           If a column ends up with the wrong data, re-import the file and adjust the mapping in the
           Column Mapping dialog. Tick &ldquo;Remember&rdquo; to make the fix stick.
+        </p>
+      </Section>
+
+      <Section id="asset-lifecycle" title="20. Asset lifecycle">
+        <p>
+          The app uses four lifecycle states:
+          <strong> Deployed at user</strong>, <strong>In stock</strong>,
+          <strong> Sent back to broker</strong>, and <strong>User keeps old device</strong> (handover).
+        </p>
+        <p className="mt-2">
+          <strong>Replace Device</strong> splits rows: the old asset is moved to its own row with
+          the chosen destination state, while the replacement asset stays assigned to the user.
+        </p>
+        <p className="mt-2">
+          The <strong>In Stock</strong> tab shows unassigned devices available for re-deployment.
+          Assets move there when they are returned from a user row.
+        </p>
+        <p className="mt-2">
+          <strong>Multi-computer users</strong> are expected during handovers: one user can be linked
+          to multiple devices temporarily, and these users are highlighted in the management view.
+        </p>
+        <p className="mt-2">
+          Use the <strong>History</strong> drawer for asset-level lifecycle events, and the
+          <strong> User profile</strong> drawer for a user-centric timeline across all linked rows.
         </p>
       </Section>
     </article>
