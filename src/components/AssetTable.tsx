@@ -401,6 +401,12 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                   <span className="truncate">{col}</span>
                   {sortIcon(col)}
                 </button>
+                <ColumnFilterPopover
+                  column={col}
+                  values={distinctByColumn[col] ?? []}
+                  selected={columnFilters[col] ?? []}
+                  onChange={(next) => setColumnFilter(col, next)}
+                />
                 <div
                   className="absolute right-0 top-1 bottom-1 w-1 cursor-col-resize hover:bg-primary/40 rounded"
                   draggable={false}
