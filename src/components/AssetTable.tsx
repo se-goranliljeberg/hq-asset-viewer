@@ -24,6 +24,25 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import type { ImportMeta } from "@/lib/import-meta";
 import { getImportedAt } from "@/lib/import-meta";
 import { daysSince } from "@/lib/stale-config";
+import { ColumnFilterPopover, COLUMN_FILTER_BLANK_TOKEN } from "./ColumnFilterPopover";
+
+const COLUMN_FILTERS_STORAGE_KEY = "hq_column_filters_v1";
+
+function loadColumnFilters(): Record<string, string[]> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(COLUMN_FILTERS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") return parsed as Record<string, string[]>;
+  } catch { /* noop */ }
+  return {};
+}
+
+function saveColumnFilters(value: Record<string, string[]>) {
+  if (typeof window === "undefined") return;
+  try { localStorage.setItem(COLUMN_FILTERS_STORAGE_KEY, JSON.stringify(value)); } catch { /* noop */ }
+}
 
 interface Props {
   rows: AssetRow[];
