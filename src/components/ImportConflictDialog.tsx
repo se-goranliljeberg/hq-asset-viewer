@@ -4,7 +4,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { Badge } from "@/components/ui/badge";
 import type { UsernameConflict } from "@/lib/excel-parser";
 
 export type ConflictResolutions = Map<number /* existingRowId */, Set<string /* fieldName */>>;
@@ -18,13 +18,20 @@ interface Props {
 
 /**
  * Lets the user choose which incoming fields to overwrite for each duplicate
- * username. Default = nothing checked (keep existing).
+ * username. Defaults to nothing checked (keep existing).
+ *
+ * Provides three batch helpers:
+ *   • "Replace all data"        — overwrite every diff for every row.
+ *   • "Apply [field] for all"   — toggle a single field across every conflict
+ *                                 in one click (per-field batch).
+ *   • Per-row "Select all/Skip all" buttons.
+ *
+ * Empty existing values are auto-filled upstream (in detectUsernameConflicts)
+ * and never appear here — this dialog only surfaces *real* conflicts.
  */
 export function ImportConflictDialog({ open, conflicts, onApply, onCancel }: Props) {
-  // state: rowId -> Set of fields chosen to overwrite.
   const [picks, setPicks] = useState<ConflictResolutions>(new Map());
 
-  // Reset state on each open.
   useEffect(() => {
     if (open) setPicks(new Map());
   }, [open, conflicts]);
@@ -39,6 +46,34 @@ export function ImportConflictDialog({ open, conflicts, onApply, onCancel }: Pro
     for (const set of picks.values()) n += set.size;
     return n;
   }, [picks]);
+
+  // Distinct field names that appear across at least one conflict — drives
+  // the per-field batch toggles at the top.
+  const fieldsAcrossConflicts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const c of conflicts) {
+      for (const d of c.diffs) {
+        counts.set(d.field, (counts.get(d.field) ?? 0) + 1);
+      }
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  }, [conflicts]);
+
+  // For a given field, count rows where it is currently checked vs total rows
+  // where it appears as a diff — drives the batch toggle's "all selected" state.
+  const fieldSelectionState = useMemo(() => {
+    const map = new Map<string, { selected: number; total: number }>();
+    for (const [field, total] of fieldsAcrossConflicts) {
+      let selected = 0;
+      for (const c of conflicts) {
+        const set = picks.get(c.existingRow.id);
+        if (!set) continue;
+        if (c.diffs.some((d) => d.field === field) && set.has(field)) selected++;
+      }
+      map.set(field, { selected, total });
+    }
+    return map;
+  }, [picks, conflicts, fieldsAcrossConflicts]);
 
   const toggleField = (rowId: number, field: string) => {
     setPicks((prev) => {
@@ -78,29 +113,87 @@ export function ImportConflictDialog({ open, conflicts, onApply, onCancel }: Pro
 
   const skipAllGlobal = () => setPicks(new Map());
 
+  /** Toggle a single field across every conflict that has it as a diff. */
+  const toggleFieldForAll = (field: string) => {
+    const state = fieldSelectionState.get(field);
+    const turnOn = !state || state.selected < state.total;
+    setPicks((prev) => {
+      const next = new Map(prev);
+      for (const c of conflicts) {
+        if (!c.diffs.some((d) => d.field === field)) continue;
+        const set = new Set(next.get(c.existingRow.id) ?? []);
+        if (turnOn) set.add(field);
+        else set.delete(field);
+        if (set.size === 0) next.delete(c.existingRow.id);
+        else next.set(c.existingRow.id, set);
+      }
+      return next;
+    });
+  };
+
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onCancel(); }}>
-      <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col">
-        <DialogHeader>
+      <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col p-0 gap-0">
+        <DialogHeader className="px-6 pt-6 pb-3 border-b border-border">
           <DialogTitle>Resolve duplicate usernames</DialogTitle>
           <DialogDescription>
-            {conflicts.length} user{conflicts.length === 1 ? "" : "s"} from the import already exist.
-            Pick the fields you want to overwrite — anything left unchecked keeps the existing value.
+            {conflicts.length} user{conflicts.length === 1 ? "" : "s"} from the import already
+            exist with conflicting values. Pick what to overwrite — anything left unchecked keeps
+            the existing value. Empty existing values are filled in automatically.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex items-center gap-2 border-b border-border pb-2 text-xs">
-          <span className="text-muted-foreground">
-            {totalChosen} of {totalDiffs} field{totalDiffs === 1 ? "" : "s"} selected
-          </span>
-          <div className="ml-auto flex gap-1">
-            <Button size="sm" variant="ghost" onClick={selectAllGlobal}>Select all</Button>
-            <Button size="sm" variant="ghost" onClick={skipAllGlobal}>Skip all</Button>
+        {/* Sticky toolbar: global + per-field batch controls */}
+        <div className="px-6 py-3 border-b border-border space-y-2 bg-muted/30">
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-muted-foreground">
+              {totalChosen} of {totalDiffs} field{totalDiffs === 1 ? "" : "s"} selected
+            </span>
+            <div className="ml-auto flex flex-wrap gap-1">
+              <Button size="sm" variant="default" onClick={selectAllGlobal}>
+                Replace all data
+              </Button>
+              <Button size="sm" variant="outline" onClick={skipAllGlobal}>
+                Skip all
+              </Button>
+            </div>
           </div>
+          {fieldsAcrossConflicts.length > 0 && (
+            <div>
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">
+                Apply field for all duplicates
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {fieldsAcrossConflicts.map(([field, count]) => {
+                  const st = fieldSelectionState.get(field) ?? { selected: 0, total: 0 };
+                  const allOn = st.selected === st.total && st.total > 0;
+                  return (
+                    <Button
+                      key={field}
+                      size="sm"
+                      variant={allOn ? "default" : "outline"}
+                      className="h-7 text-xs"
+                      onClick={() => toggleFieldForAll(field)}
+                      title={`${st.selected}/${st.total} selected`}
+                    >
+                      {field}
+                      <Badge
+                        variant="secondary"
+                        className="ml-1.5 h-4 px-1 text-[10px] leading-none"
+                      >
+                        {st.selected}/{count}
+                      </Badge>
+                    </Button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
-        <ScrollArea className="flex-1 -mx-6 px-6">
-          <div className="space-y-4 py-2">
+        {/* Scrollable conflict list — uses native overflow so nested scroll works */}
+        <div className="flex-1 min-h-0 overflow-y-auto px-6 py-3">
+          <div className="space-y-4">
             {conflicts.map((c) => {
               const selectedSet = picks.get(c.existingRow.id) ?? new Set<string>();
               return (
@@ -154,9 +247,9 @@ export function ImportConflictDialog({ open, conflicts, onApply, onCancel }: Pro
               );
             })}
           </div>
-        </ScrollArea>
+        </div>
 
-        <DialogFooter>
+        <DialogFooter className="px-6 py-4 border-t border-border">
           <Button variant="outline" onClick={onCancel}>Cancel import</Button>
           <Button onClick={() => onApply(picks)}>
             Apply {totalChosen > 0 ? `(${totalChosen} change${totalChosen === 1 ? "" : "s"})` : "& skip duplicates"}
