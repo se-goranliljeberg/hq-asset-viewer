@@ -33,11 +33,18 @@ export function AssetManagementView({ rows, edits, onOpenUser, onOpenAsset }: Pr
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    const fromUrl = params.get(CATEGORY_QUERY_KEY);
-    if (fromUrl && CATEGORY_QUERY_VALUES.has(fromUrl as Exclude<CategoryFilter, null>)) {
-      setCategoryFilter(fromUrl as Exclude<CategoryFilter, null>);
-    }
+    const syncFromUrl = () => {
+      const params = new URLSearchParams(window.location.search);
+      const fromUrl = params.get(CATEGORY_QUERY_KEY);
+      if (fromUrl && CATEGORY_QUERY_VALUES.has(fromUrl as Exclude<CategoryFilter, null>)) {
+        setCategoryFilter(fromUrl as Exclude<CategoryFilter, null>);
+      } else {
+        setCategoryFilter(null);
+      }
+    };
+    syncFromUrl();
+    window.addEventListener("popstate", syncFromUrl);
+    return () => window.removeEventListener("popstate", syncFromUrl);
   }, []);
 
   useEffect(() => {

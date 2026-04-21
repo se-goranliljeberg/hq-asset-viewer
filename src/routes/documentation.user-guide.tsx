@@ -324,8 +324,8 @@ function UserGuide() {
 
       <Section id="export" title="16. Exporting">
         <p>
-          <strong>Export CSV</strong> asks whether you want <strong>All data</strong> or
-          <strong> Filtered data</strong>. Filtered export respects active table filters (including
+          <strong>Export CSV</strong> asks whether you want <strong>All data</strong> or{" "}
+          <strong>Filtered data</strong>. Filtered export respects active table filters (including
           column/right-click filters). The CSV is generated in your browser; no copy is stored or
           transmitted anywhere.
         </p>

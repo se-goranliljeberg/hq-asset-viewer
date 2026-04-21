@@ -109,9 +109,13 @@ export function AssetViewer() {
   const [data, setData, hydrated, setDataDirect] = useStickyState();
   const hasUnseenVersion = useHasUnseenVersion();
   const [edits, setEditsState] = useState<Record<string, AssetEdits>>({});
+  const dataRef = useRef<AssetData | null>(null);
+  const editsRef = useRef<Record<string, AssetEdits>>({});
   const [importMeta, setImportMeta] = useState<ImportMeta>({});
 
   useEffect(() => { setImportMeta(loadImportMeta()); }, []);
+  useEffect(() => { dataRef.current = data; }, [data]);
+  useEffect(() => { editsRef.current = edits; }, [edits]);
 
   const mergeAndPersistMeta = useCallback((incoming: ImportMeta) => {
     setImportMeta((prev) => {
@@ -196,6 +200,7 @@ export function AssetViewer() {
   const [batchCommentOpen, setBatchCommentOpen] = useState(false);
   const [exportChoiceOpen, setExportChoiceOpen] = useState(false);
   const [tableVisibleRows, setTableVisibleRows] = useState<AssetRow[]>([]);
+  const [tableColumnFiltersActive, setTableColumnFiltersActive] = useState(false);
   const [confirmBatchStatusOpen, setConfirmBatchStatusOpen] = useState(false);
   const [pendingBatchStatus, setPendingBatchStatus] = useState<AssetStatus | null>(null);
   const [pendingBatchSplitCount, setPendingBatchSplitCount] = useState(0);
@@ -495,30 +500,34 @@ export function AssetViewer() {
 
   const getBatchStatusSplitCount = useCallback(
     (ids: Set<number>, statusVal: AssetStatus): number => {
-      if (!data) return 0;
+      const currentData = dataRef.current;
+      if (!currentData) return 0;
       if (statusVal !== "In stock" && statusVal !== "Sent back to broker") return 0;
       let count = 0;
       for (const id of ids) {
-        const row = data.rows.find((r) => r.id === id);
+        const row = currentData.rows.find((r) => r.id === id);
         if (row && row.user.trim() && row.computername.trim()) count += 1;
       }
       return count;
     },
-    [data],
+    [],
   );
 
   const applyBatchStatusChange = useCallback((ids: Set<number>, statusVal: AssetStatus) => {
-    if (!data || ids.size === 0) return;
+    if (ids.size === 0) return;
     ensureInitials(() => {
+      const currentData = dataRef.current;
+      const currentEdits = editsRef.current;
+      if (!currentData) return;
       const nowIso = new Date().toISOString();
       const splitStatus = statusVal === "In stock" || statusVal === "Sent back to broker"
         ? statusVal
         : null;
-      let maxId = data.rows.reduce((m, r) => Math.max(m, r.id), 0);
+      let maxId = currentData.rows.reduce((m, r) => Math.max(m, r.id), 0);
       let splitCount = 0;
       let changed = 0;
-      const nextRows = [...data.rows];
-      const nextEdits: Record<string, AssetEdits> = { ...edits };
+      const nextRows = [...currentData.rows];
+      const nextEdits: Record<string, AssetEdits> = { ...currentEdits };
 
       for (const id of ids) {
         const rowIdx = nextRows.findIndex((r) => r.id === id);
@@ -599,7 +608,10 @@ export function AssetViewer() {
         changed += 1;
       }
 
-      setData({ ...data, rows: nextRows });
+      const nextData: AssetData = { ...currentData, rows: nextRows };
+      dataRef.current = nextData;
+      editsRef.current = nextEdits;
+      setData(nextData);
       saveEdits(nextEdits);
       setEditsState(nextEdits);
 
@@ -611,7 +623,7 @@ export function AssetViewer() {
         toast.success(`Updated status for ${changed} row${changed === 1 ? "" : "s"}`);
       }
     });
-  }, [data, edits, ensureInitials, setData]);
+  }, [ensureInitials, setData]);
 
   const performCellEdit = useCallback((rowId: number, column: string, value: string) => {
     if (!data) return;
@@ -1668,12 +1680,7 @@ export function AssetViewer() {
     return out;
   }, [modelFilter, userFilter, sourceFilter, statusFilter, defaultStatusFilter, search, exceptionsOnly, managerFilter, excludeInactive, skanskaFilter]);
 
-  // Prefer table-level visible rows (includes right-click/column filters).
-  // Fall back to the parent-level filtered set before the table has reported visibility.
-  const exportFilteredRows =
-    tableVisibleRows.length > 0 || filtered.length === 0
-      ? tableVisibleRows
-      : filtered;
+  const exportFilteredRows = tableColumnFiltersActive ? tableVisibleRows : filtered;
 
   return (
     <TooltipProvider>
@@ -1957,6 +1964,7 @@ export function AssetViewer() {
                     setHistoryDrawerOpen(true);
                   }}
                   onVisibleRowsChange={setTableVisibleRows}
+                  onColumnFiltersActiveChange={setTableColumnFiltersActive}
                 />
               </TabsContent>
 
@@ -2045,7 +2053,8 @@ export function AssetViewer() {
               <AlertDialogDescription>
                 This will split the asset from the user for each affected row (the computer is moved
                 off the user line). {pendingBatchSplitCount} selected row
-                {pendingBatchSplitCount === 1 ? "" : "s"} with users will be affected.
+                {pendingBatchSplitCount === 1 ? "" : "s"} with both a user and a computer will be
+                affected.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>

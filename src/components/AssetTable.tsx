@@ -66,6 +66,8 @@ interface Props {
   onOpenAsset?: (row: AssetRow) => void;
   /** Visible rows after in-table filters. */
   onVisibleRowsChange?: (rows: AssetRow[]) => void;
+  /** Whether any in-table column filters are active. */
+  onColumnFiltersActiveChange?: (active: boolean) => void;
 }
 
 const MIN_COL_W = 80;
@@ -175,7 +177,7 @@ function InlineCell({ value, width, col, rowId, onCellEdit }: {
   );
 }
 
-export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellEdit, onUndoLast, selectedIds, onSelectionChange, importedAt, staleThreshold, onOpenUser, onOpenAsset, onVisibleRowsChange }: Props) {
+export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellEdit, onUndoLast, selectedIds, onSelectionChange, importedAt, staleThreshold, onOpenUser, onOpenAsset, onVisibleRowsChange, onColumnFiltersActiveChange }: Props) {
   const parentRef = useRef<HTMLDivElement>(null);
 
   // Persisted column order
@@ -282,6 +284,12 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
   const onVisibleRowsChangeRef = useRef(onVisibleRowsChange);
   useEffect(() => { onVisibleRowsChangeRef.current = onVisibleRowsChange; }, [onVisibleRowsChange]);
   useEffect(() => { onVisibleRowsChangeRef.current?.(visibleRows); }, [visibleRows]);
+  const onColumnFiltersActiveChangeRef = useRef(onColumnFiltersActiveChange);
+  useEffect(() => { onColumnFiltersActiveChangeRef.current = onColumnFiltersActiveChange; }, [onColumnFiltersActiveChange]);
+  useEffect(() => {
+    onColumnFiltersActiveChangeRef.current?.(activeColumnFilterCount > 0);
+    return () => onColumnFiltersActiveChangeRef.current?.(false);
+  }, [activeColumnFilterCount]);
 
   const getColumnLabel = useCallback((col: string): string => {
     if (col === "Status") return "Computer Status";
@@ -311,10 +319,10 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
           </ContextMenuItem>
           <ContextMenuSeparator />
           <ContextMenuItem disabled={!hasFilterOnColumn} onClick={() => clearRightClickFilter(col)}>
-            Clear right-click filter (this column)
+            Clear column filter
           </ContextMenuItem>
           <ContextMenuItem disabled={!hasAnyFilter} onClick={clearAllColumnFilters}>
-            Clear all right-click filters
+            Clear all column filters
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
