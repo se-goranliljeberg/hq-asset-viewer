@@ -6,7 +6,7 @@ import { STATUS_OPTIONS, getEditKey, effectiveSkanska, effectiveUserActive, effe
 import {
   loadColumnOrder, saveColumnOrder, loadColumnWidths, saveColumnWidths,
 } from "@/lib/asset-store";
-import { ArrowUp, ArrowDown, ArrowUpDown, GripVertical, AlertTriangle } from "lucide-react";
+import { ArrowUp, ArrowDown, ArrowUpDown, GripVertical, AlertTriangle, Filter, X } from "lucide-react";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -24,6 +24,25 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import type { ImportMeta } from "@/lib/import-meta";
 import { getImportedAt } from "@/lib/import-meta";
 import { daysSince } from "@/lib/stale-config";
+import { ColumnFilterPopover, COLUMN_FILTER_BLANK_TOKEN } from "./ColumnFilterPopover";
+
+const COLUMN_FILTERS_STORAGE_KEY = "hq_column_filters_v1";
+
+function loadColumnFilters(): Record<string, string[]> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(COLUMN_FILTERS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") return parsed as Record<string, string[]>;
+  } catch { /* noop */ }
+  return {};
+}
+
+function saveColumnFilters(value: Record<string, string[]>) {
+  if (typeof window === "undefined") return;
+  try { localStorage.setItem(COLUMN_FILTERS_STORAGE_KEY, JSON.stringify(value)); } catch { /* noop */ }
+}
 
 interface Props {
   rows: AssetRow[];
@@ -186,23 +205,94 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
     [displayCols, colWidths],
   );
 
+  // ── Per-column Excel-style filters ───────────────────────────────────────
+  // Empty array (or missing entry) => no filter on that column.
+  const [columnFilters, setColumnFilters] = useState<Record<string, string[]>>(
+    () => loadColumnFilters(),
+  );
+  useEffect(() => { saveColumnFilters(columnFilters); }, [columnFilters]);
+
+  /** Resolve the displayed string value for a row + column, mirroring how the cell renders. */
+  const getCellValue = useCallback(
+    (row: AssetRow, col: string): string => {
+      const editKey = getEditKey(row.id);
+      const rowEdits = edits[editKey];
+      if (col === "Status") return rowEdits?.status ?? "";
+      if (col === "Warranty until") return rowEdits?.warrantyUntil ?? "";
+      if (col === "User Active?") return effectiveUserActive(rowEdits);
+      if (col === "Skanska computer?") return effectiveSkanska(rowEdits, row.computername);
+      if (col === COMMENTS_COL) return rowEdits?.comment ?? "";
+      if (col === "Exceptions") return effectiveExceptions(row, rowEdits).join(", ");
+      if (col === "Source file") return row.sourceFile;
+      if (col === "Username") return row.user || row.raw[col] || "";
+      if (col === "Computername") return row.computername || row.raw[col] || "";
+      return row.raw[col] ?? "";
+    },
+    [edits],
+  );
+
+  /** Distinct values per column, computed from the unfiltered row set. */
+  const distinctByColumn = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    for (const col of displayCols) {
+      const set = new Set<string>();
+      for (const r of rows) set.add(getCellValue(r, col));
+      map[col] = [...set];
+    }
+    return map;
+  }, [displayCols, rows, getCellValue]);
+
+  /** Apply per-column filters on top of the parent-supplied rows. */
+  const visibleRows = useMemo(() => {
+    const activeCols = Object.keys(columnFilters).filter(
+      (c) => columnFilters[c] && columnFilters[c].length > 0,
+    );
+    if (activeCols.length === 0) return rows;
+    return rows.filter((r) =>
+      activeCols.every((c) => {
+        const sel = columnFilters[c];
+        const v = getCellValue(r, c);
+        const token = v === "" ? COLUMN_FILTER_BLANK_TOKEN : v;
+        return sel.includes(token);
+      }),
+    );
+  }, [rows, columnFilters, getCellValue]);
+
+  const setColumnFilter = useCallback((col: string, next: string[]) => {
+    setColumnFilters((prev) => {
+      const updated = { ...prev };
+      if (next.length === 0) delete updated[col];
+      else updated[col] = next;
+      return updated;
+    });
+  }, []);
+
+  const clearAllColumnFilters = useCallback(() => setColumnFilters({}), []);
+  const activeColumnFilterCount = Object.keys(columnFilters).filter(
+    (c) => columnFilters[c] && columnFilters[c].length > 0,
+  ).length;
+
   const virtualizer = useVirtualizer({
-    count: rows.length,
+    count: visibleRows.length,
     getScrollElement: () => parentRef.current,
     estimateSize: () => 36,
     overscan: 20,
   });
 
-  const allSelected = rows.length > 0 && selectedIds.size === rows.length;
-  const someSelected = selectedIds.size > 0 && !allSelected;
+  const allSelected = visibleRows.length > 0 && visibleRows.every((r) => selectedIds.has(r.id));
+  const someSelected = visibleRows.some((r) => selectedIds.has(r.id)) && !allSelected;
 
   const handleSelectAll = useCallback(() => {
     if (allSelected) {
-      onSelectionChange(new Set());
+      const next = new Set(selectedIds);
+      for (const r of visibleRows) next.delete(r.id);
+      onSelectionChange(next);
     } else {
-      onSelectionChange(new Set(rows.map((r) => r.id)));
+      const next = new Set(selectedIds);
+      for (const r of visibleRows) next.add(r.id);
+      onSelectionChange(next);
     }
-  }, [allSelected, rows, onSelectionChange]);
+  }, [allSelected, visibleRows, selectedIds, onSelectionChange]);
 
   const handleSelectRow = useCallback((rowId: number) => {
     const next = new Set(selectedIds);
@@ -269,10 +359,27 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
   };
 
   return (
-    <div
-      ref={parentRef}
-      className="flex-1 overflow-auto rounded-lg border border-border bg-card"
-    >
+    <div className="flex flex-1 flex-col min-h-0">
+      {activeColumnFilterCount > 0 && (
+        <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
+          <Filter className="h-3.5 w-3.5 text-primary" />
+          <span>
+            <strong className="text-foreground">{visibleRows.length}</strong> of {rows.length} rows
+            shown — {activeColumnFilterCount} column filter{activeColumnFilterCount === 1 ? "" : "s"} active
+          </span>
+          <button
+            type="button"
+            onClick={clearAllColumnFilters}
+            className="ml-1 inline-flex items-center gap-1 rounded px-2 py-0.5 hover:bg-accent text-foreground"
+          >
+            <X className="h-3 w-3" /> Clear all
+          </button>
+        </div>
+      )}
+      <div
+        ref={parentRef}
+        className="flex-1 overflow-auto rounded-lg border border-border bg-card"
+      >
       <div style={{ minWidth: totalWidth }}>
         {/* Sticky header */}
         <div className="sticky top-0 z-10 flex bg-muted/80 backdrop-blur-sm border-b border-border">
@@ -311,6 +418,12 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                   <span className="truncate">{col}</span>
                   {sortIcon(col)}
                 </button>
+                <ColumnFilterPopover
+                  column={col}
+                  values={distinctByColumn[col] ?? []}
+                  selected={columnFilters[col] ?? []}
+                  onChange={(next) => setColumnFilter(col, next)}
+                />
                 <div
                   className="absolute right-0 top-1 bottom-1 w-1 cursor-col-resize hover:bg-primary/40 rounded"
                   draggable={false}
@@ -328,7 +441,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
         {/* Virtual rows */}
         <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
           {virtualizer.getVirtualItems().map((vRow) => {
-            const row = rows[vRow.index];
+            const row = visibleRows[vRow.index];
             const isOdd = vRow.index % 2 === 1;
             const editKey = getEditKey(row.id);
             const rowEdits = edits[editKey];
@@ -601,6 +714,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
             );
           })}
         </div>
+      </div>
       </div>
     </div>
   );
