@@ -55,7 +55,7 @@ const COMMENTS_COL = "Comments";
 const CANONICAL_ORDER = [
   "Username", "Name", "Computername", "Modell", "Last account activity", "Last logon date",
   "Status", "Warranty until", "AD Create.Date", "Company", "Email", "Department", "Manager",
-  "User Active?", "Skanska computer?",
+  "User Active?", "Skanska computer?", "OU",
 ] as const;
 
 // Virtual app-managed columns — always shown even when the source file

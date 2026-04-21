@@ -205,6 +205,8 @@ export function AssetViewer() {
   const pendingParsed = useRef<AssetData | null>(null);
   const pendingSeedEdits = useRef<Record<string, AssetEdits>>({});
   const pendingImportedAt = useRef<Record<number, Record<string, string>>>({});
+  /** Auto-fills detected by detectUsernameConflicts (silent merges where old was empty). */
+  const pendingAutoFills = useRef<Map<number, { incomingIdx: number; fields: Set<string> }>>(new Map());
 
   // Mapping dialog state
   const [mappingOpen, setMappingOpen] = useState(false);
@@ -634,17 +636,31 @@ export function AssetViewer() {
   }, [data, setData, applySeedEdits, mergeAndPersistMeta]);
 
   /** Apply user-chosen field overwrites for duplicate-username rows. */
-  const applyConflictResolutions = useCallback((resolutions: ConflictResolutions) => {
+  const applyConflictResolutions = useCallback((inputResolutions: ConflictResolutions) => {
     if (!data || !pendingParsed.current) return;
     const incoming = pendingParsed.current;
     const seedMap = pendingSeedEdits.current;
-    const stamps = pendingImportedAt.current;
     const importIso = new Date().toISOString();
 
-    // Build incoming row by id (use existingRowId from conflicts).
+    // Build incoming row by existingId from BOTH conflicts and autoFills.
     const incomingByExistingId = new Map<number, { row: AssetRow; idx: number }>();
     for (const c of pendingConflicts) {
       incomingByExistingId.set(c.existingRow.id, { row: c.incomingRow, idx: c.incomingIdx });
+    }
+    for (const [existingId, info] of pendingAutoFills.current.entries()) {
+      if (!incomingByExistingId.has(existingId)) {
+        const incRow = incoming.rows[info.incomingIdx];
+        if (incRow) incomingByExistingId.set(existingId, { row: incRow, idx: info.incomingIdx });
+      }
+    }
+
+    // Merge autoFills into the resolutions map (silent fills get applied too).
+    const resolutions: ConflictResolutions = new Map();
+    for (const [k, v] of inputResolutions.entries()) resolutions.set(k, new Set(v));
+    for (const [existingId, info] of pendingAutoFills.current.entries()) {
+      const set = resolutions.get(existingId) ?? new Set<string>();
+      for (const f of info.fields) set.add(f);
+      resolutions.set(existingId, set);
     }
 
     const newImportedAt: ImportMeta = {};
@@ -727,9 +743,10 @@ export function AssetViewer() {
     if (pendingParsed.current && data) {
       const incoming = pendingParsed.current;
       // Detect username conflicts first.
-      const { conflicts, nonConflicting } = detectUsernameConflicts(
+      const { conflicts, nonConflicting, autoFills } = detectUsernameConflicts(
         data, incoming, pendingSeedEdits.current, edits,
       );
+      pendingAutoFills.current = autoFills;
       if (conflicts.length > 0) {
         pendingParsed.current = { ...incoming, rows: nonConflicting.map((n) => n.row) };
         const newSeed: Record<string, AssetEdits> = {};
@@ -746,6 +763,11 @@ export function AssetViewer() {
         pendingMode.current = "enrich";
         setConflictOpen(true);
         return;
+      }
+      // No conflicts — but apply any silent autoFills before continuing.
+      if (autoFills.size > 0) {
+        applyConflictResolutions(new Map());
+        pendingAutoFills.current = new Map();
       }
       const merged = enrichWithUsers(data, incoming);
       setData(merged);
@@ -791,7 +813,7 @@ export function AssetViewer() {
       pendingImportedAt.current = {};
       setPendingIsUsersFile(false);
     }
-  }, [data, edits, setData, applySeedEdits, mergeAndPersistMeta, remapImportedAt]);
+  }, [data, edits, setData, applySeedEdits, mergeAndPersistMeta, remapImportedAt, applyConflictResolutions]);
 
   const handleImportReplace = useCallback(() => {
     setImportModeOpen(false);
@@ -816,9 +838,10 @@ export function AssetViewer() {
     if (pendingParsed.current && data) {
       const incoming = pendingParsed.current;
       // Detect username conflicts first.
-      const { conflicts, nonConflicting } = detectUsernameConflicts(
+      const { conflicts, nonConflicting, autoFills } = detectUsernameConflicts(
         data, incoming, pendingSeedEdits.current, edits,
       );
+      pendingAutoFills.current = autoFills;
       if (conflicts.length > 0) {
         // Stash filtered incoming for the post-conflict step.
         pendingParsed.current = { ...incoming, rows: nonConflicting.map((n) => n.row) };
@@ -838,8 +861,13 @@ export function AssetViewer() {
         setConflictOpen(true);
         return;
       }
-      // No username conflicts — check for multi-asset cases (incoming computer
-      // for an existing user that already owns one).
+      // No conflicts — apply silent autoFills (if any) before continuing.
+      if (autoFills.size > 0) {
+        applyConflictResolutions(new Map());
+        pendingAutoFills.current = new Map();
+      }
+      // Then check for multi-asset cases (incoming computer for an existing user
+      // that already owns one).
       const multiCases = detectUserMultiAssetIncoming(data, incoming);
       if (multiCases.length > 0) {
         setPendingMultiAssetCases(multiCases);
@@ -864,7 +892,7 @@ export function AssetViewer() {
       pendingSeedEdits.current = {};
       pendingImportedAt.current = {};
     }
-  }, [data, edits, setData, applySeedEdits, mergeAndPersistMeta, remapImportedAt]);
+  }, [data, edits, setData, applySeedEdits, mergeAndPersistMeta, remapImportedAt, applyConflictResolutions]);
 
   const handleConflictApply = useCallback((resolutions: ConflictResolutions) => {
     setConflictOpen(false);
@@ -903,6 +931,7 @@ export function AssetViewer() {
     pendingParsed.current = null;
     pendingSeedEdits.current = {};
     pendingImportedAt.current = {};
+    pendingAutoFills.current = new Map();
     setPendingConflicts([]);
   }, [data, setData, applySeedEdits, mergeAndPersistMeta, remapImportedAt, applyConflictResolutions]);
 
@@ -912,6 +941,7 @@ export function AssetViewer() {
     pendingParsed.current = null;
     pendingSeedEdits.current = {};
     pendingImportedAt.current = {};
+    pendingAutoFills.current = new Map();
     toast.info("Import cancelled.");
   }, []);
 
