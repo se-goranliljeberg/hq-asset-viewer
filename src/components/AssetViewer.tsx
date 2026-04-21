@@ -26,7 +26,7 @@ import { AssetTable } from "./AssetTable";
 import { AuditDashboard } from "./AuditDashboard";
 import { SheetPicker } from "./SheetPicker";
 import { PrivacyFooter } from "./PrivacyFooter";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -1753,7 +1753,7 @@ export function AssetViewer() {
                 <TooltipTrigger asChild>
                   <Button size="sm" onClick={() => fileRef.current?.click()}>
                     <Upload className="h-4 w-4 mr-1" />
-                    {data ? "Replace Data" : "Load Excel"}
+                    {data ? "Upload Data" : "Load Excel"}
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>Import an Excel file (.xlsx / .xls)</TooltipContent>
@@ -2037,10 +2037,7 @@ export function AssetViewer() {
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction
-                className={buttonVariants({ variant: "outline" })}
-                onClick={() => exportCSV(rows, columns, edits)}
-              >
+              <AlertDialogAction variant="outline" onClick={() => exportCSV(rows, columns, edits)}>
                 All data ({rows.length.toLocaleString()} rows)
               </AlertDialogAction>
               <AlertDialogAction onClick={() => exportCSV(exportFilteredRows, columns, edits)}>
@@ -2143,10 +2140,13 @@ export function AssetViewer() {
                   Enrich Users
                 </AlertDialogAction>
               )}
-              <AlertDialogAction onClick={handleImportAdd} className={buttonVariants({ variant: "outline" })}>
+              <AlertDialogAction variant="outline" onClick={handleImportAdd}>
                 Add Data
               </AlertDialogAction>
-              <AlertDialogAction onClick={handleImportReplace} className={buttonVariants({ variant: pendingIsUsersFile ? "outline" : "default" })}>
+              <AlertDialogAction
+                variant={pendingIsUsersFile ? "outline" : "default"}
+                onClick={handleImportReplace}
+              >
                 Replace All
               </AlertDialogAction>
             </AlertDialogFooter>
