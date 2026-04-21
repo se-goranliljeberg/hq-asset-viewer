@@ -622,6 +622,16 @@ export function detectUsernameConflicts(
 
   const conflicts: UsernameConflict[] = [];
   const nonConflicting: Array<{ row: AssetRow; incomingIdx: number }> = [];
+  const autoFills = new Map<number, { incomingIdx: number; fields: Set<string> }>();
+
+  const addAutoFill = (existingId: number, idx: number, field: string) => {
+    let entry = autoFills.get(existingId);
+    if (!entry) {
+      entry = { incomingIdx: idx, fields: new Set<string>() };
+      autoFills.set(existingId, entry);
+    }
+    entry.fields.add(field);
+  };
 
   incoming.rows.forEach((row, idx) => {
     const u = row.user.trim().toLowerCase();
@@ -635,46 +645,44 @@ export function detectUsernameConflicts(
     const diffs: FieldDiff[] = [];
 
     // Canonical raw fields (Username already matched, skip it).
+    // For each field, if old is empty and new is non-empty -> auto-fill (no prompt).
+    // If old is non-empty and differs -> conflict (user picks).
     for (const f of CANONICAL_FIELDS) {
       if (f === "Username") continue;
-      // Status / Warranty / Active / Skanska come from seedEdits, not raw.
+      let newVal = "";
+      let oldVal = "";
       if (f === "Status") {
-        const newVal = incomingSeed?.status ?? "";
-        const oldVal = existingSeed?.status ?? "";
-        if (newVal && newVal !== oldVal) diffs.push({ field: f, oldVal, newVal });
-        continue;
+        newVal = incomingSeed?.status ?? "";
+        oldVal = existingSeed?.status ?? "";
+      } else if (f === "Warranty until") {
+        newVal = incomingSeed?.warrantyUntil ?? "";
+        oldVal = existingSeed?.warrantyUntil ?? "";
+      } else if (f === "User Active?") {
+        newVal = incomingSeed?.userActive ?? "";
+        oldVal = existingSeed?.userActive ?? "";
+      } else if (f === "Skanska computer?") {
+        newVal = incomingSeed?.skanskaComputer ?? "";
+        oldVal = existingSeed?.skanskaComputer ?? "";
+      } else {
+        newVal = (row.raw[f] ?? "").trim();
+        oldVal = (match.raw[f] ?? "").trim();
       }
-      if (f === "Warranty until") {
-        const newVal = incomingSeed?.warrantyUntil ?? "";
-        const oldVal = existingSeed?.warrantyUntil ?? "";
-        if (newVal && newVal !== oldVal) diffs.push({ field: f, oldVal, newVal });
-        continue;
+      if (!newVal || newVal === oldVal) continue;
+      if (!oldVal) {
+        // Old is empty -> silently fill from incoming.
+        addAutoFill(match.id, idx, f);
+      } else {
+        diffs.push({ field: f, oldVal, newVal });
       }
-      if (f === "User Active?") {
-        const newVal = incomingSeed?.userActive ?? "";
-        const oldVal = existingSeed?.userActive ?? "";
-        if (newVal && newVal !== oldVal) diffs.push({ field: f, oldVal, newVal });
-        continue;
-      }
-      if (f === "Skanska computer?") {
-        const newVal = incomingSeed?.skanskaComputer ?? "";
-        const oldVal = existingSeed?.skanskaComputer ?? "";
-        if (newVal && newVal !== oldVal) diffs.push({ field: f, oldVal, newVal });
-        continue;
-      }
-      const newVal = (row.raw[f] ?? "").trim();
-      const oldVal = (match.raw[f] ?? "").trim();
-      if (newVal && newVal !== oldVal) diffs.push({ field: f, oldVal, newVal });
     }
 
     if (diffs.length > 0) {
       conflicts.push({ existingRow: match, incomingRow: row, incomingIdx: idx, diffs });
     }
-    // If usernames match but no diffs, treat as fully-handled: do NOT add as new row.
-    // (We silently skip duplicates with no new info.)
+    // If usernames match but no diffs / only autofills, do NOT add as new row.
   });
 
-  return { conflicts, nonConflicting };
+  return { conflicts, nonConflicting, autoFills };
 }
 
 // ---------- Multi-asset-per-user import detection ----------
