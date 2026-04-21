@@ -81,6 +81,34 @@ function isCsvFile(file: File): boolean {
   return mime === "text/csv" || mime === "application/csv" || mime === "application/vnd.ms-excel";
 }
 
+function normalizeCsvBufferEncoding(buffer: ArrayBuffer): ArrayBuffer {
+  const bytes = new Uint8Array(buffer);
+  if (bytes.length === 0) return buffer;
+
+  let text: string;
+  if (bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
+    text = new TextDecoder("utf-8").decode(bytes.slice(3));
+  } else if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe) {
+    text = new TextDecoder("utf-16le").decode(bytes.slice(2));
+  } else if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) {
+    text = new TextDecoder("utf-16be").decode(bytes.slice(2));
+  } else {
+    try {
+      text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    } catch {
+      text = new TextDecoder("windows-1252").decode(bytes);
+    }
+  }
+
+  const encoded = new TextEncoder().encode(text);
+  const withBom = new Uint8Array(encoded.length + 3);
+  withBom[0] = 0xef;
+  withBom[1] = 0xbb;
+  withBom[2] = 0xbf;
+  withBom.set(encoded, 3);
+  return withBom.buffer;
+}
+
 function loadFilterFromStorage(key: string, fallback: string[]): string[] {
   if (typeof window === "undefined") return fallback;
   try {
@@ -1449,9 +1477,10 @@ export function AssetViewer() {
 
   const handleFile = useCallback(async (file: File) => {
     try {
-      const buffer = await file.arrayBuffer();
+      let buffer = await file.arrayBuffer();
 
       if (isCsvFile(file)) {
+        buffer = normalizeCsvBufferEncoding(buffer);
         const sheet = getSheetNames(buffer)[0];
         if (!sheet) {
           toast.error(CSV_EMPTY_ERROR);
