@@ -26,6 +26,7 @@ export const CANONICAL_FIELDS = [
   "Manager",
   "User Active?",
   "Skanska computer?",
+  "OU",
 ] as const;
 
 export type CanonicalField = (typeof CANONICAL_FIELDS)[number];
@@ -53,6 +54,7 @@ const ALIASES: Record<CanonicalField, string[]> = {
   Manager: ["manager", "reports to", "chef", "linemanager", "line manager", "supervisor"],
   "User Active?": ["user active", "useractive", "active", "enabled", "accountdisabled", "account disabled", "disabled", "is active", "isactive"],
   "Skanska computer?": ["skanska computer", "skanskacomputer", "skanska device", "company device", "corporate device", "company computer", "corporate computer"],
+  OU: ["ou", "organizational unit", "organisational unit", "organizationunit", "ad ou", "ad path", "distinguishedname", "distinguished name", "dn", "canonicalname", "canonical name"],
 };
 
 // Substring patterns for fuzzy matches (when alias miss).
@@ -72,6 +74,7 @@ const FUZZY_SUBSTRINGS: Record<CanonicalField, string[]> = {
   Manager: ["manager", "supervisor"],
   "User Active?": ["active", "enabled", "disabled"],
   "Skanska computer?": ["skanska", "company device", "corporate device"],
+  OU: ["organizational unit", "organisational unit", "ou=", "distinguished", "canonicalname"],
 };
 
 export interface MappingDetection {
