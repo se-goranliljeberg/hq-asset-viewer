@@ -593,6 +593,12 @@ export interface ConflictDetectionResult {
   conflicts: UsernameConflict[];
   /** Incoming rows (with their original index) that had no username match. */
   nonConflicting: Array<{ row: AssetRow; incomingIdx: number }>;
+  /**
+   * Auto-applied fills: existing rows where the OLD value was empty for one or
+   * more fields, so the incoming value is silently merged in (no user choice).
+   * Map: existingRowId -> Set<canonical field names>.
+   */
+  autoFills: Map<number, { incomingIdx: number; fields: Set<string> }>;
 }
 
 /**
