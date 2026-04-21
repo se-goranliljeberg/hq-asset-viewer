@@ -743,9 +743,10 @@ export function AssetViewer() {
     if (pendingParsed.current && data) {
       const incoming = pendingParsed.current;
       // Detect username conflicts first.
-      const { conflicts, nonConflicting } = detectUsernameConflicts(
+      const { conflicts, nonConflicting, autoFills } = detectUsernameConflicts(
         data, incoming, pendingSeedEdits.current, edits,
       );
+      pendingAutoFills.current = autoFills;
       if (conflicts.length > 0) {
         pendingParsed.current = { ...incoming, rows: nonConflicting.map((n) => n.row) };
         const newSeed: Record<string, AssetEdits> = {};
@@ -762,6 +763,11 @@ export function AssetViewer() {
         pendingMode.current = "enrich";
         setConflictOpen(true);
         return;
+      }
+      // No conflicts — but apply any silent autoFills before continuing.
+      if (autoFills.size > 0) {
+        applyConflictResolutions(new Map());
+        pendingAutoFills.current = new Map();
       }
       const merged = enrichWithUsers(data, incoming);
       setData(merged);
