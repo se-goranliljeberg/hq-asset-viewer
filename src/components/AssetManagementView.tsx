@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { AssetRow } from "@/lib/asset-types";
 import type { AssetEdits } from "@/lib/asset-edits";
 import { getEditKey, computeMultiComputerUsers } from "@/lib/asset-edits";
@@ -24,10 +24,35 @@ interface RowWithStatus {
 }
 
 type CategoryFilter = "in-stock" | "deployed" | "broker" | "handover" | null;
+const CATEGORY_QUERY_KEY = "cat";
+const CATEGORY_QUERY_VALUES = new Set<Exclude<CategoryFilter, null>>(["in-stock", "deployed", "broker", "handover"]);
 
 export function AssetManagementView({ rows, edits, onOpenUser, onOpenAsset }: Props) {
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const fromUrl = params.get(CATEGORY_QUERY_KEY);
+    if (fromUrl && CATEGORY_QUERY_VALUES.has(fromUrl as Exclude<CategoryFilter, null>)) {
+      setCategoryFilter(fromUrl as Exclude<CategoryFilter, null>);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    const current = url.searchParams.get(CATEGORY_QUERY_KEY);
+    if (categoryFilter) {
+      if (current === categoryFilter) return;
+      url.searchParams.set(CATEGORY_QUERY_KEY, categoryFilter);
+    } else {
+      if (!current) return;
+      url.searchParams.delete(CATEGORY_QUERY_KEY);
+    }
+    window.history.pushState({}, "", `${url.pathname}${url.search}${url.hash}`);
+  }, [categoryFilter]);
 
   const toggleFilter = (key: Exclude<CategoryFilter, null>) =>
     setCategoryFilter((cur) => (cur === key ? null : key));

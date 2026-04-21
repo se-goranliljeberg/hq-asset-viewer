@@ -194,6 +194,11 @@ export function AssetViewer() {
 
   // Batch comment dialog state.
   const [batchCommentOpen, setBatchCommentOpen] = useState(false);
+  const [exportChoiceOpen, setExportChoiceOpen] = useState(false);
+  const [tableVisibleRows, setTableVisibleRows] = useState<AssetRow[]>([]);
+  const [confirmBatchStatusOpen, setConfirmBatchStatusOpen] = useState(false);
+  const [pendingBatchStatus, setPendingBatchStatus] = useState<AssetStatus | null>(null);
+  const [pendingBatchSplitCount, setPendingBatchSplitCount] = useState(0);
 
   // Conflict resolution dialog state
   const [conflictOpen, setConflictOpen] = useState(false);
@@ -488,6 +493,126 @@ export function AssetViewer() {
     [ensureInitials],
   );
 
+  const getBatchStatusSplitCount = useCallback(
+    (ids: Set<number>, statusVal: AssetStatus): number => {
+      if (!data) return 0;
+      if (statusVal !== "In stock" && statusVal !== "Sent back to broker") return 0;
+      let count = 0;
+      for (const id of ids) {
+        const row = data.rows.find((r) => r.id === id);
+        if (row && row.user.trim() && row.computername.trim()) count += 1;
+      }
+      return count;
+    },
+    [data],
+  );
+
+  const applyBatchStatusChange = useCallback((ids: Set<number>, statusVal: AssetStatus) => {
+    if (!data || ids.size === 0) return;
+    ensureInitials(() => {
+      const nowIso = new Date().toISOString();
+      const splitStatus = statusVal === "In stock" || statusVal === "Sent back to broker"
+        ? statusVal
+        : null;
+      let maxId = data.rows.reduce((m, r) => Math.max(m, r.id), 0);
+      let splitCount = 0;
+      let changed = 0;
+      const nextRows = [...data.rows];
+      const nextEdits: Record<string, AssetEdits> = { ...edits };
+
+      for (const id of ids) {
+        const rowIdx = nextRows.findIndex((r) => r.id === id);
+        if (rowIdx === -1) continue;
+        const row = nextRows[rowIdx];
+        const key = getEditKey(id);
+        const current = nextEdits[key] ?? { status: "", warrantyUntil: "" };
+
+        if (splitStatus && row.user.trim() && row.computername.trim()) {
+          maxId += 1;
+          const spinoffId = maxId;
+          let spinoffRow: AssetRow = {
+            id: spinoffId,
+            computername: row.computername,
+            modell: row.modell,
+            user: "",
+            raw: { ...row.raw, Username: "" },
+            exceptions: [],
+            sourceFile: row.sourceFile,
+            assetKind: "computer",
+            history: row.history ?? [],
+            previousUsers: row.previousUsers ?? [],
+          };
+          spinoffRow = recordLifecycleEvent(spinoffRow, {
+            from: "Deployed at user",
+            to: splitStatus,
+            prevUser: row.user,
+            note: `Returned via Status change → "${splitStatus}"`,
+            at: nowIso,
+          });
+          nextRows[rowIdx] = {
+            ...row,
+            computername: "",
+            modell: "",
+            raw: {
+              ...row.raw,
+              Computername: "",
+              Modell: "",
+            },
+            exceptions: [],
+            assetKind: "user-only",
+            history: [],
+            previousUsers: [],
+          };
+          nextRows.push(spinoffRow);
+
+          nextEdits[getEditKey(spinoffId)] = {
+            ...current,
+            status: splitStatus,
+            comment: appendComment(
+              current.comment,
+              `Device returned: user "${row.user || "(none)"}" unassigned, status → "${splitStatus}"`,
+            ),
+          };
+          nextEdits[key] = {
+            ...current,
+            status: "",
+            warrantyUntil: "",
+            comment: appendComment(
+              current.comment,
+              `Device "${row.computername}" returned to ${splitStatus}; user retained without device`,
+            ),
+          };
+          splitCount += 1;
+          changed += 1;
+          continue;
+        }
+
+        if (current.status === statusVal) continue;
+        nextEdits[key] = {
+          ...current,
+          status: statusVal,
+          comment: appendComment(
+            current.comment,
+            `${describeChange("Status", current.status, statusVal)} (batch)`,
+          ),
+        };
+        changed += 1;
+      }
+
+      setData({ ...data, rows: nextRows });
+      saveEdits(nextEdits);
+      setEditsState(nextEdits);
+
+      if (splitCount > 0) {
+        toast.success(
+          `Updated status for ${changed} row${changed === 1 ? "" : "s"} (${splitCount} split)`,
+        );
+      } else {
+        toast.success(`Updated status for ${changed} row${changed === 1 ? "" : "s"}`);
+      }
+    });
+  }, [data, edits, ensureInitials, setData]);
+
   const performCellEdit = useCallback((rowId: number, column: string, value: string) => {
     if (!data) return;
     let prevValue = "";
@@ -636,8 +761,10 @@ export function AssetViewer() {
   }, [data, setData, applySeedEdits, mergeAndPersistMeta]);
 
   /** Apply user-chosen field overwrites for duplicate-username rows. */
-  const applyConflictResolutions = useCallback((inputResolutions: ConflictResolutions) => {
-    if (!data || !pendingParsed.current) return;
+  // Applies conflict edits as a side effect and also returns the resolved snapshot
+  // so post-conflict import steps can continue within the same callback tick.
+  const applyConflictResolutions = useCallback((inputResolutions: ConflictResolutions): AssetData | null => {
+    if (!data || !pendingParsed.current) return null;
     const incoming = pendingParsed.current;
     const seedMap = pendingSeedEdits.current;
     const importIso = new Date().toISOString();
@@ -674,7 +801,6 @@ export function AssetViewer() {
       const newRaw = { ...r.raw };
       const incomingSeed = seedMap[String(inc.idx)] ?? {};
       const audit: string[] = [];
-      let nextStatus = r.computername; // unused placeholder
       let nextSeed: AssetEdits | undefined;
 
       for (const field of fieldsToApply) {
@@ -701,7 +827,6 @@ export function AssetViewer() {
           newImportedAt[r.id][field] = importIso;
         }
       }
-      void nextStatus;
       if (nextSeed) newSeedPatch[String(r.id)] = nextSeed;
       if (audit.length > 0) auditByRow.set(r.id, audit);
 
@@ -712,7 +837,8 @@ export function AssetViewer() {
       return { ...r, raw: newRaw, computername: cn, modell: md, user: us };
     });
 
-    setData({ ...data, rows: updatedRows });
+    const resolvedData: AssetData = { ...data, rows: updatedRows };
+    setData(resolvedData);
 
     // Append audit comments + merge seed patches
     if (auditByRow.size > 0 || Object.keys(newSeedPatch).length > 0) {
@@ -736,6 +862,7 @@ export function AssetViewer() {
       });
     }
     if (Object.keys(newImportedAt).length > 0) mergeAndPersistMeta(newImportedAt);
+    return resolvedData;
   }, [data, setData, mergeAndPersistMeta, pendingConflicts]);
 
   const handleImportEnrich = useCallback(() => {
@@ -896,14 +1023,15 @@ export function AssetViewer() {
 
   const handleConflictApply = useCallback((resolutions: ConflictResolutions) => {
     setConflictOpen(false);
-    applyConflictResolutions(resolutions);
+    const resolvedData = applyConflictResolutions(resolutions);
+    const baseData = resolvedData ?? data;
     // Continue with non-conflicting rows via the original mode flow.
-    if (data && pendingParsed.current && pendingParsed.current.rows.length > 0) {
+    if (baseData && pendingParsed.current && pendingParsed.current.rows.length > 0) {
       const incoming = pendingParsed.current;
       if (pendingMode.current === "enrich") {
-        const merged = enrichWithUsers(data, incoming);
+        const merged = enrichWithUsers(baseData, incoming);
         setData(merged);
-        const maxExistingId = data.rows.reduce((m, r) => Math.max(m, r.id), -1);
+        const maxExistingId = baseData.rows.reduce((m, r) => Math.max(m, r.id), -1);
         const remappedSeed: Record<string, AssetEdits> = {};
         incoming.rows.forEach((_row, i) => {
           const seed = pendingSeedEdits.current[String(i)];
@@ -913,9 +1041,17 @@ export function AssetViewer() {
         mergeAndPersistMeta(remapImportedAt(incoming.rows.length, (i) => maxExistingId + 1 + i));
         toast.success(`Resolved conflicts and enriched — total rows: ${merged.rows.length}`);
       } else {
-        const merged = mergeData(data, incoming);
+        const multiCases = detectUserMultiAssetIncoming(baseData, incoming);
+        if (multiCases.length > 0) {
+          setPendingMultiAssetCases(multiCases);
+          setMultiAssetOpen(true);
+          pendingAutoFills.current = new Map();
+          setPendingConflicts([]);
+          return;
+        }
+        const merged = mergeData(baseData, incoming);
         setData(merged);
-        const maxExistingId = data.rows.reduce((m, r) => Math.max(m, r.id), -1);
+        const maxExistingId = baseData.rows.reduce((m, r) => Math.max(m, r.id), -1);
         const remappedSeed: Record<string, AssetEdits> = {};
         for (const [oldKey, seed] of Object.entries(pendingSeedEdits.current)) {
           const oldIdx = Number(oldKey);
@@ -1532,6 +1668,13 @@ export function AssetViewer() {
     return out;
   }, [modelFilter, userFilter, sourceFilter, statusFilter, defaultStatusFilter, search, exceptionsOnly, managerFilter, excludeInactive, skanskaFilter]);
 
+  // Prefer table-level visible rows (includes right-click/column filters).
+  // Fall back to the parent-level filtered set before the table has reported visibility.
+  const exportFilteredRows =
+    tableVisibleRows.length > 0 || filtered.length === 0
+      ? tableVisibleRows
+      : filtered;
+
   return (
     <TooltipProvider>
       <div className="flex h-screen flex-col bg-background text-foreground">
@@ -1617,11 +1760,11 @@ export function AssetViewer() {
                   </Tooltip>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <Button size="sm" variant="outline" onClick={() => exportCSV(filtered, columns, edits)}>
+                      <Button size="sm" variant="outline" onClick={() => setExportChoiceOpen(true)}>
                         <Download className="h-4 w-4 mr-1" /> Export CSV
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent>Export filtered rows as CSV file</TooltipContent>
+                    <TooltipContent>Choose to export all rows or the filtered view</TooltipContent>
                   </Tooltip>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -1698,30 +1841,15 @@ export function AssetViewer() {
                       value="__batch__"
                       onValueChange={(v) => {
                         if (v === "__batch__") return;
-                        const statusVal = v === "__none__" ? "" : v;
-                        ensureInitials(() => {
-                          setEditsState((prev) => {
-                            const next = { ...prev };
-                            for (const id of selectedIds) {
-                              const key = getEditKey(id);
-                              const current = next[key] ?? { status: "", warrantyUntil: "" };
-                              const changed = current.status !== statusVal;
-                              next[key] = {
-                                ...current,
-                                status: statusVal as AssetStatus,
-                                comment: changed
-                                  ? appendComment(
-                                      current.comment,
-                                      `${describeChange("Status", current.status, statusVal)} (batch)`,
-                                    )
-                                  : current.comment,
-                              };
-                            }
-                            saveEdits(next);
-                            return next;
-                          });
-                          toast.success(`Updated status for ${selectedIds.size} rows`);
-                        });
+                        const statusVal = (v === "__none__" ? "" : v) as AssetStatus;
+                        const splitCount = getBatchStatusSplitCount(selectedIds, statusVal);
+                        if (splitCount > 0) {
+                          setPendingBatchStatus(statusVal);
+                          setPendingBatchSplitCount(splitCount);
+                          setConfirmBatchStatusOpen(true);
+                          return;
+                        }
+                        applyBatchStatusChange(selectedIds, statusVal);
                       }}
                     >
                       <SelectTrigger className="h-8 w-[200px] text-xs">
@@ -1828,6 +1956,7 @@ export function AssetViewer() {
                     setHistoryDrawerRow(r);
                     setHistoryDrawerOpen(true);
                   }}
+                  onVisibleRowsChange={setTableVisibleRows}
                 />
               </TabsContent>
 
@@ -1885,6 +2014,63 @@ export function AssetViewer() {
             <PrivacyFooter />
           </div>
         )}
+
+        <AlertDialog open={exportChoiceOpen} onOpenChange={setExportChoiceOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Export .csv</AlertDialogTitle>
+              <AlertDialogDescription>
+                Choose what to export.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                className={buttonVariants({ variant: "outline" })}
+                onClick={() => exportCSV(rows, columns, edits)}
+              >
+                All data ({rows.length.toLocaleString()} rows)
+              </AlertDialogAction>
+              <AlertDialogAction onClick={() => exportCSV(exportFilteredRows, columns, edits)}>
+                Filtered data ({exportFilteredRows.length.toLocaleString()} rows)
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog open={confirmBatchStatusOpen} onOpenChange={setConfirmBatchStatusOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Confirm bulk status change</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will split the asset from the user for each affected row (the computer is moved
+                off the user line). {pendingBatchSplitCount} selected row
+                {pendingBatchSplitCount === 1 ? "" : "s"} with users will be affected.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel
+                onClick={() => {
+                  setPendingBatchStatus(null);
+                  setPendingBatchSplitCount(0);
+                }}
+              >
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  if (pendingBatchStatus !== null) {
+                    applyBatchStatusChange(selectedIds, pendingBatchStatus);
+                  }
+                  setPendingBatchStatus(null);
+                  setPendingBatchSplitCount(0);
+                }}
+              >
+                Apply status change
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         <AlertDialog open={confirmClear} onOpenChange={setConfirmClear}>
           <AlertDialogContent>
