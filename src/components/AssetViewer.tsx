@@ -201,6 +201,7 @@ export function AssetViewer() {
   const [exportChoiceOpen, setExportChoiceOpen] = useState(false);
   const [tableVisibleRows, setTableVisibleRows] = useState<AssetRow[]>([]);
   const [tableColumnFiltersActive, setTableColumnFiltersActive] = useState(false);
+  const [resetColumnFiltersSignal, setResetColumnFiltersSignal] = useState(0);
   const [confirmBatchStatusOpen, setConfirmBatchStatusOpen] = useState(false);
   const [pendingBatchStatus, setPendingBatchStatus] = useState<AssetStatus | null>(null);
   const [pendingBatchSplitCount, setPendingBatchSplitCount] = useState(0);
@@ -1509,6 +1510,7 @@ export function AssetViewer() {
     setExceptionsOnly(false);
     setExcludeInactive(false);
     setSkanskaFilter("all");
+    setResetColumnFiltersSignal((v) => v + 1);
   }, []);
 
   /** Restore every filter to its app-level default (used by the Reset filters button). */
@@ -1522,6 +1524,7 @@ export function AssetViewer() {
     setExceptionsOnly(false);
     setExcludeInactive(false);
     setSkanskaFilter("all");
+    setResetColumnFiltersSignal((v) => v + 1);
     toast.success("Filters reset to defaults.");
   }, [defaultStatusFilter]);
 
@@ -1965,6 +1968,7 @@ export function AssetViewer() {
                   }}
                   onVisibleRowsChange={setTableVisibleRows}
                   onColumnFiltersActiveChange={setTableColumnFiltersActive}
+                  resetColumnFiltersSignal={resetColumnFiltersSignal}
                 />
               </TabsContent>
 
