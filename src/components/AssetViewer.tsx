@@ -838,9 +838,10 @@ export function AssetViewer() {
     if (pendingParsed.current && data) {
       const incoming = pendingParsed.current;
       // Detect username conflicts first.
-      const { conflicts, nonConflicting } = detectUsernameConflicts(
+      const { conflicts, nonConflicting, autoFills } = detectUsernameConflicts(
         data, incoming, pendingSeedEdits.current, edits,
       );
+      pendingAutoFills.current = autoFills;
       if (conflicts.length > 0) {
         // Stash filtered incoming for the post-conflict step.
         pendingParsed.current = { ...incoming, rows: nonConflicting.map((n) => n.row) };
@@ -860,8 +861,13 @@ export function AssetViewer() {
         setConflictOpen(true);
         return;
       }
-      // No username conflicts — check for multi-asset cases (incoming computer
-      // for an existing user that already owns one).
+      // No conflicts — apply silent autoFills (if any) before continuing.
+      if (autoFills.size > 0) {
+        applyConflictResolutions(new Map());
+        pendingAutoFills.current = new Map();
+      }
+      // Then check for multi-asset cases (incoming computer for an existing user
+      // that already owns one).
       const multiCases = detectUserMultiAssetIncoming(data, incoming);
       if (multiCases.length > 0) {
         setPendingMultiAssetCases(multiCases);
