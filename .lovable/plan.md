@@ -1,5 +1,3 @@
-
-
 ## Asset Lifecycle Management
 
 Today each row is a snapshot of "user + computer". We're extending the model so a **computer is a first-class asset** with its own lifecycle (`In stock → Deployed at user → In stock → Sent back to broker`), full history, and user-history rollups. Existing data keeps working; the new behaviours layer on top.
@@ -40,8 +38,8 @@ interface AssetRow {
 - **Old asset** stays as its own row, user cleared, `Status` set to user's choice (`In stock` default, or `Sent back to broker`), lifecycle event `Deployed at user → <chosen>` recorded with `prevUser`.
 - **New asset** becomes a new row with the user attached, `Status = Deployed at user`, lifecycle event `(none) → Deployed at user` recorded.
 - Dialog gets a new section: **"Source of replacement device"** with two tabs:
-  - *New device* — current Computername / Modell / Warranty inputs.
-  - *From In Stock* — searchable list of existing rows where `Status = "In stock"` and no user assigned. Picking one re-assigns that row instead of creating a new one (records `In stock → Deployed at user` event).
+  - _New device_ — current Computername / Modell / Warranty inputs.
+  - _From In Stock_ — searchable list of existing rows where `Status = "In stock"` and no user assigned. Picking one re-assigns that row instead of creating a new one (records `In stock → Deployed at user` event).
 
 ### 3. Multi-computer per user — collapsed display + exception
 
@@ -55,7 +53,7 @@ When several rows share the same `user` (case-insensitive, trimmed), the asset l
 
 ### 4. Import — duplicate-asset prompt
 
-`detectUsernameConflicts` (in `excel-parser.ts`) is reused. A new sibling helper `detectUserMultiAssetIncoming` runs *after* conflict resolution and finds incoming rows whose username already has a Computername in the dataset with a *different* incoming Computername. The user is prompted via a new lightweight dialog (`MultiAssetImportDialog`) per affected user with three options:
+`detectUsernameConflicts` (in `excel-parser.ts`) is reused. A new sibling helper `detectUserMultiAssetIncoming` runs _after_ conflict resolution and finds incoming rows whose username already has a Computername in the dataset with a _different_ incoming Computername. The user is prompted via a new lightweight dialog (`MultiAssetImportDialog`) per affected user with three options:
 
 1. **Add as additional device** (default) — adds the new row, leaves the old assignment, both rows get the multi-device badge & exception.
 2. **Replace** — runs the same split-into-two-rows flow as §2, asking "Send old device to: In stock / Sent back to broker".
@@ -91,6 +89,7 @@ In `AuditDashboard.tsx`, clicking a row in **Per-User Detail** opens a "User pro
 ### Files touched
 
 **Edited**
+
 - `src/lib/asset-types.ts` — new lifecycle types on `AssetRow`.
 - `src/lib/asset-edits.ts` — `recordLifecycleEvent`, "User has multiple computers" exception support.
 - `src/lib/excel-parser.ts` — `detectUserMultiAssetIncoming`, migration backfill for `assetKind`.
@@ -104,7 +103,7 @@ In `AuditDashboard.tsx`, clicking a row in **Per-User Detail** opens a "User pro
 - `package.json` → 0.4.0.
 
 **New**
+
 - `src/components/AssetHistoryDrawer.tsx`
 - `src/components/UserHistoryDrawer.tsx`
 - `src/components/MultiAssetImportDialog.tsx`
-
