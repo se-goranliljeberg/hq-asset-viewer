@@ -76,8 +76,8 @@ function UserGuide() {
 
       <Section id="getting-started" title="1. Getting started">
         <p>
-          Click <strong>Load Excel</strong> in the top-right of the app and pick an
-          <code> .xlsx </code> or <code> .xls </code> file. The file is read directly in your
+          Click <strong>Load Data</strong> in the top-right of the app and pick an
+          <code> .xlsx </code>, <code> .xls </code>, or <code> .csv </code> file. The file is read directly in your
           browser — nothing is uploaded.
         </p>
         <Tip>
