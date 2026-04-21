@@ -29,24 +29,6 @@ import {
   ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuLabel, ContextMenuSeparator, ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 
-const COLUMN_FILTERS_STORAGE_KEY = "hq_column_filters_v1";
-
-function loadColumnFilters(): Record<string, string[]> {
-  if (typeof window === "undefined") return {};
-  try {
-    const raw = localStorage.getItem(COLUMN_FILTERS_STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === "object") return parsed as Record<string, string[]>;
-  } catch { /* noop */ }
-  return {};
-}
-
-function saveColumnFilters(value: Record<string, string[]>) {
-  if (typeof window === "undefined") return;
-  try { localStorage.setItem(COLUMN_FILTERS_STORAGE_KEY, JSON.stringify(value)); } catch { /* noop */ }
-}
-
 interface Props {
   rows: AssetRow[];
   columns: string[];
@@ -68,6 +50,8 @@ interface Props {
   onVisibleRowsChange?: (rows: AssetRow[]) => void;
   /** Whether any in-table column filters are active. */
   onColumnFiltersActiveChange?: (active: boolean) => void;
+  /** Changes to this value clear all in-table column filters. */
+  resetColumnFiltersSignal?: number;
 }
 
 const MIN_COL_W = 80;
@@ -177,7 +161,7 @@ function InlineCell({ value, width, col, rowId, onCellEdit }: {
   );
 }
 
-export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellEdit, onUndoLast, selectedIds, onSelectionChange, importedAt, staleThreshold, onOpenUser, onOpenAsset, onVisibleRowsChange, onColumnFiltersActiveChange }: Props) {
+export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellEdit, onUndoLast, selectedIds, onSelectionChange, importedAt, staleThreshold, onOpenUser, onOpenAsset, onVisibleRowsChange, onColumnFiltersActiveChange, resetColumnFiltersSignal }: Props) {
   const parentRef = useRef<HTMLDivElement>(null);
 
   // Persisted column order
@@ -217,10 +201,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
 
   // ── Per-column Excel-style filters ───────────────────────────────────────
   // Empty array (or missing entry) => no filter on that column.
-  const [columnFilters, setColumnFilters] = useState<Record<string, string[]>>(
-    () => loadColumnFilters(),
-  );
-  useEffect(() => { saveColumnFilters(columnFilters); }, [columnFilters]);
+  const [columnFilters, setColumnFilters] = useState<Record<string, string[]>>({});
 
   /** Resolve the displayed string value for a row + column, mirroring how the cell renders. */
   const getCellValue = useCallback(
@@ -278,6 +259,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
   }, []);
 
   const clearAllColumnFilters = useCallback(() => setColumnFilters({}), []);
+  useEffect(() => { setColumnFilters({}); }, [resetColumnFiltersSignal]);
   const activeColumnFilterCount = Object.keys(columnFilters).filter(
     (c) => columnFilters[c] && columnFilters[c].length > 0,
   ).length;
