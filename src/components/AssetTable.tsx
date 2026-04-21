@@ -424,7 +424,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
         {/* Virtual rows */}
         <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
           {virtualizer.getVirtualItems().map((vRow) => {
-            const row = rows[vRow.index];
+            const row = visibleRows[vRow.index];
             const isOdd = vRow.index % 2 === 1;
             const editKey = getEditKey(row.id);
             const rowEdits = edits[editKey];
