@@ -359,10 +359,27 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
   };
 
   return (
-    <div
-      ref={parentRef}
-      className="flex-1 overflow-auto rounded-lg border border-border bg-card"
-    >
+    <div className="flex flex-1 flex-col min-h-0">
+      {activeColumnFilterCount > 0 && (
+        <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
+          <Filter className="h-3.5 w-3.5 text-primary" />
+          <span>
+            <strong className="text-foreground">{visibleRows.length}</strong> of {rows.length} rows
+            shown — {activeColumnFilterCount} column filter{activeColumnFilterCount === 1 ? "" : "s"} active
+          </span>
+          <button
+            type="button"
+            onClick={clearAllColumnFilters}
+            className="ml-1 inline-flex items-center gap-1 rounded px-2 py-0.5 hover:bg-accent text-foreground"
+          >
+            <X className="h-3 w-3" /> Clear all
+          </button>
+        </div>
+      )}
+      <div
+        ref={parentRef}
+        className="flex-1 overflow-auto rounded-lg border border-border bg-card"
+      >
       <div style={{ minWidth: totalWidth }}>
         {/* Sticky header */}
         <div className="sticky top-0 z-10 flex bg-muted/80 backdrop-blur-sm border-b border-border">
