@@ -72,6 +72,7 @@ const FILTER_STORAGE_KEYS = {
 } as const;
 
 const CSV_REQUIRED_ANY_OF: CanonicalField[] = ["Username", "Computername", "Email"];
+const CSV_EMPTY_ERROR = "CSV is empty.";
 
 function isCsvFile(file: File): boolean {
   const name = file.name.toLowerCase();
@@ -1453,12 +1454,12 @@ export function AssetViewer() {
       if (isCsvFile(file)) {
         const sheet = getSheetNames(buffer)[0];
         if (!sheet) {
-          toast.error("CSV is empty.");
+          toast.error(CSV_EMPTY_ERROR);
           return;
         }
         const inspected = inspectSheet(buffer, sheet);
         if (inspected.headers.length === 0) {
-          toast.error("CSV is empty.");
+          toast.error(CSV_EMPTY_ERROR);
           return;
         }
         const mapping: Mapping = {};
@@ -1469,7 +1470,7 @@ export function AssetViewer() {
           Object.values(mapping).filter((v): v is CanonicalField => v !== "ignore"),
         );
         if (!CSV_REQUIRED_ANY_OF.some((field) => mappedFields.has(field))) {
-          toast.error(`CSV is missing required column: ${CSV_REQUIRED_ANY_OF.join(", ")}`);
+          toast.error(`CSV must contain at least one of: ${CSV_REQUIRED_ANY_OF.join(", ")}`);
           return;
         }
         applyParsed(parseSheetWithMapping(buffer, sheet, file.name, mapping));
