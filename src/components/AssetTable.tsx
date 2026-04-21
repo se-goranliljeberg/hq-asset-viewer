@@ -6,7 +6,7 @@ import { STATUS_OPTIONS, getEditKey, effectiveSkanska, effectiveUserActive, effe
 import {
   loadColumnOrder, saveColumnOrder, loadColumnWidths, saveColumnWidths,
 } from "@/lib/asset-store";
-import { ArrowUp, ArrowDown, ArrowUpDown, GripVertical, AlertTriangle } from "lucide-react";
+import { ArrowUp, ArrowDown, ArrowUpDown, GripVertical, AlertTriangle, Filter, X } from "lucide-react";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -714,6 +714,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
             );
           })}
         </div>
+      </div>
       </div>
     </div>
   );
