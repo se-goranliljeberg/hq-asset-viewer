@@ -205,6 +205,8 @@ export function AssetViewer() {
   const pendingParsed = useRef<AssetData | null>(null);
   const pendingSeedEdits = useRef<Record<string, AssetEdits>>({});
   const pendingImportedAt = useRef<Record<number, Record<string, string>>>({});
+  /** Auto-fills detected by detectUsernameConflicts (silent merges where old was empty). */
+  const pendingAutoFills = useRef<Map<number, { incomingIdx: number; fields: Set<string> }>>(new Map());
 
   // Mapping dialog state
   const [mappingOpen, setMappingOpen] = useState(false);
