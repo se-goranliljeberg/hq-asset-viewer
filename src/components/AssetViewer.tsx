@@ -15,7 +15,7 @@ import {
   getSheetNames, parseSheetWithMapping, mergeData, enrichWithUsers,
   inspectSheet, headerSetHash, migrateToCanonical,
   detectUsernameConflicts,
-  type Mapping, type ParseResult, type UsernameConflict,
+  type Mapping, type ParseResult, type UsernameConflict, type CanonicalField,
 } from "@/lib/excel-parser";
 import { exportCSV } from "@/lib/csv-export";
 import { KpiCards } from "./KpiCards";
@@ -70,6 +70,16 @@ const FILTER_STORAGE_KEYS = {
   excludeInactive: "hq_filter_exclude_inactive",
   skanska: "hq_filter_skanska",
 } as const;
+
+const CSV_REQUIRED_ANY_OF: CanonicalField[] = ["Username", "Computername", "Email"];
+const CSV_EMPTY_ERROR = "CSV is empty.";
+
+function isCsvFile(file: File): boolean {
+  const name = file.name.toLowerCase();
+  if (name.endsWith(".csv")) return true;
+  const mime = file.type.toLowerCase();
+  return mime === "text/csv" || mime === "application/csv" || mime === "application/vnd.ms-excel";
+}
 
 function loadFilterFromStorage(key: string, fallback: string[]): string[] {
   if (typeof window === "undefined") return fallback;
@@ -1438,17 +1448,48 @@ export function AssetViewer() {
   }, []);
 
   const handleFile = useCallback(async (file: File) => {
-    const buffer = await file.arrayBuffer();
-    const sheets = getSheetNames(buffer);
-    if (sheets.length > 1) {
-      pendingBuffer.current = buffer;
-      pendingFilename.current = file.name;
-      setPendingSheets(sheets);
-      setSheetPickerOpen(true);
-    } else {
-      openMappingFor(buffer, sheets[0], file.name);
+    try {
+      const buffer = await file.arrayBuffer();
+
+      if (isCsvFile(file)) {
+        const sheet = getSheetNames(buffer)[0];
+        if (!sheet) {
+          toast.error(CSV_EMPTY_ERROR);
+          return;
+        }
+        const inspected = inspectSheet(buffer, sheet);
+        if (inspected.headers.length === 0) {
+          toast.error(CSV_EMPTY_ERROR);
+          return;
+        }
+        const mapping: Mapping = {};
+        for (const [header, det] of Object.entries(inspected.suggested)) {
+          mapping[header] = det.field;
+        }
+        const mappedFields = new Set<CanonicalField>(
+          Object.values(mapping).filter((v): v is CanonicalField => v !== "ignore"),
+        );
+        if (!CSV_REQUIRED_ANY_OF.some((field) => mappedFields.has(field))) {
+          toast.error(`CSV must contain at least one of: ${CSV_REQUIRED_ANY_OF.join(", ")}`);
+          return;
+        }
+        applyParsed(parseSheetWithMapping(buffer, sheet, file.name, mapping));
+        return;
+      }
+
+      const sheets = getSheetNames(buffer);
+      if (sheets.length > 1) {
+        pendingBuffer.current = buffer;
+        pendingFilename.current = file.name;
+        setPendingSheets(sheets);
+        setSheetPickerOpen(true);
+      } else {
+        openMappingFor(buffer, sheets[0], file.name);
+      }
+    } catch (err) {
+      toast.error(`Failed to import file: ${err instanceof Error ? err.message : String(err)}`);
     }
-  }, [openMappingFor]);
+  }, [applyParsed, openMappingFor]);
 
   const handleSheetPick = useCallback((sheet: string) => {
     setSheetPickerOpen(false);
@@ -1740,7 +1781,7 @@ export function AssetViewer() {
                 </TooltipContent>
               </Tooltip>
 
-              <input ref={fileRef} type="file" accept=".xlsx,.xls" onChange={onFileChange} className="hidden" />
+              <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv,text/csv" onChange={onFileChange} className="hidden" />
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button size="sm" variant="outline" onClick={() => setDebugOpen(true)}>
@@ -1753,10 +1794,10 @@ export function AssetViewer() {
                 <TooltipTrigger asChild>
                   <Button size="sm" onClick={() => fileRef.current?.click()}>
                     <Upload className="h-4 w-4 mr-1" />
-                    {data ? "Upload Data" : "Load Excel"}
+                    {data ? "Upload Data" : "Load Data"}
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Import an Excel file (.xlsx / .xls)</TooltipContent>
+                <TooltipContent>Import an Excel or CSV file (.xlsx / .xls / .csv)</TooltipContent>
               </Tooltip>
               {data && (
                 <>
@@ -2018,10 +2059,10 @@ export function AssetViewer() {
           <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center px-6">
             <RefreshCw className="h-12 w-12 text-muted-foreground/40" strokeWidth={1} />
             <p className="text-muted-foreground text-sm max-w-md">
-              Load an Excel file (.xlsx) to view your HQ asset inventory. Data will be processed entirely in your browser and stored locally.
+              Load an Excel or CSV file (.xlsx / .xls / .csv) to view your HQ asset inventory. Data will be processed entirely in your browser and stored locally.
             </p>
             <Button onClick={() => fileRef.current?.click()}>
-              <Upload className="h-4 w-4 mr-1" /> Load Excel
+              <Upload className="h-4 w-4 mr-1" /> Load Data
             </Button>
             <PrivacyFooter />
           </div>
