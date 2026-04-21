@@ -813,7 +813,7 @@ export function AssetViewer() {
       pendingImportedAt.current = {};
       setPendingIsUsersFile(false);
     }
-  }, [data, edits, setData, applySeedEdits, mergeAndPersistMeta, remapImportedAt]);
+  }, [data, edits, setData, applySeedEdits, mergeAndPersistMeta, remapImportedAt, applyConflictResolutions]);
 
   const handleImportReplace = useCallback(() => {
     setImportModeOpen(false);
@@ -892,7 +892,7 @@ export function AssetViewer() {
       pendingSeedEdits.current = {};
       pendingImportedAt.current = {};
     }
-  }, [data, edits, setData, applySeedEdits, mergeAndPersistMeta, remapImportedAt]);
+  }, [data, edits, setData, applySeedEdits, mergeAndPersistMeta, remapImportedAt, applyConflictResolutions]);
 
   const handleConflictApply = useCallback((resolutions: ConflictResolutions) => {
     setConflictOpen(false);
@@ -931,6 +931,7 @@ export function AssetViewer() {
     pendingParsed.current = null;
     pendingSeedEdits.current = {};
     pendingImportedAt.current = {};
+    pendingAutoFills.current = new Map();
     setPendingConflicts([]);
   }, [data, setData, applySeedEdits, mergeAndPersistMeta, remapImportedAt, applyConflictResolutions]);
 
@@ -940,6 +941,7 @@ export function AssetViewer() {
     pendingParsed.current = null;
     pendingSeedEdits.current = {};
     pendingImportedAt.current = {};
+    pendingAutoFills.current = new Map();
     toast.info("Import cancelled.");
   }, []);
 
