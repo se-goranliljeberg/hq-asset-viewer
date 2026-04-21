@@ -636,11 +636,10 @@ export function AssetViewer() {
   }, [data, setData, applySeedEdits, mergeAndPersistMeta]);
 
   /** Apply user-chosen field overwrites for duplicate-username rows. */
-  const applyConflictResolutions = useCallback((resolutions: ConflictResolutions) => {
+  const applyConflictResolutions = useCallback((inputResolutions: ConflictResolutions) => {
     if (!data || !pendingParsed.current) return;
     const incoming = pendingParsed.current;
     const seedMap = pendingSeedEdits.current;
-    const stamps = pendingImportedAt.current;
     const importIso = new Date().toISOString();
 
     // Build incoming row by existingId from BOTH conflicts and autoFills.
@@ -656,15 +655,13 @@ export function AssetViewer() {
     }
 
     // Merge autoFills into the resolutions map (silent fills get applied too).
-    const merged: ConflictResolutions = new Map();
-    for (const [k, v] of resolutions.entries()) merged.set(k, new Set(v));
+    const resolutions: ConflictResolutions = new Map();
+    for (const [k, v] of inputResolutions.entries()) resolutions.set(k, new Set(v));
     for (const [existingId, info] of pendingAutoFills.current.entries()) {
-      const set = merged.get(existingId) ?? new Set<string>();
+      const set = resolutions.get(existingId) ?? new Set<string>();
       for (const f of info.fields) set.add(f);
-      merged.set(existingId, set);
+      resolutions.set(existingId, set);
     }
-    resolutions = merged;
-    void stamps;
 
     const newImportedAt: ImportMeta = {};
     const newSeedPatch: Record<string, AssetEdits> = {};
