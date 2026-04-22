@@ -75,6 +75,7 @@ const FILTER_STORAGE_KEYS = {
 
 const CSV_REQUIRED_ANY_OF: CanonicalField[] = ["Username", "Computername", "Email"];
 const CSV_EMPTY_ERROR = "CSV is empty.";
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function isCsvFile(file: File): boolean {
   const name = file.name.toLowerCase();
@@ -116,6 +117,10 @@ function normalizeCsvBufferEncoding(buffer: ArrayBuffer): ArrayBuffer {
   withBom.set(encoded, 3);
   // Return the exact byte window represented by this Uint8Array.
   return withBom.buffer.slice(withBom.byteOffset, withBom.byteOffset + withBom.byteLength);
+}
+
+function isIsoDate(v: string): boolean {
+  return ISO_DATE_RE.test(v);
 }
 
 function loadFilterFromStorage(key: string, fallback: string[]): string[] {
@@ -324,8 +329,6 @@ export function AssetViewer() {
     const cleaned: Record<string, AssetEdits> = {};
     const nextUserEdits: Record<string, string> = {};
     const legacyRowEndDates: Record<string, string> = {};
-    const isIsoDate = (v: string) => /^\d{4}-\d{2}-\d{2}$/.test(v);
-
     for (const [k, v] of Object.entries(loadedUserEdits)) {
       const date = (v ?? "").trim();
       if (!date) continue;
@@ -339,7 +342,8 @@ export function AssetViewer() {
     for (const [k, v] of Object.entries(loaded)) {
       const w = v.warrantyUntil ?? "";
       const e = v.endDate ?? "";
-      const { endDate: _legacyEndDate, ...rest } = v;
+      const rest = { ...v };
+      delete rest.endDate;
       const badWarranty = !!w && !isIsoDate(w);
       if (badWarranty || e !== undefined) dirty = true;
       if (e && isIsoDate(e)) legacyRowEndDates[k] = e;

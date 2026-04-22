@@ -20,7 +20,7 @@ export interface AssetEdits {
 }
 
 type EditsMap = Record<string, AssetEdits>; // keyed by row computername+id
-export type UserEdits = Record<string, string>; // keyed by lowercased username
+export type UserEdits = Record<string, string>; // keyed by lowercased username; value is YYYY-MM-DD
 
 export function loadEdits(): EditsMap {
   try {
