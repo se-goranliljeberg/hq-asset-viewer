@@ -759,7 +759,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                         : `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
                     }
                     if (stampLabel || isStaleVal) {
-                      return (
+                      return withHighlight(
                         <Tooltip key={col}>
                           <TooltipTrigger asChild>
                             <div>{withRightClick}</div>
@@ -772,11 +772,11 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                               </div>
                             )}
                           </TooltipContent>
-                        </Tooltip>
+                        </Tooltip>,
                       );
                     }
                   }
-                  return withRightClick;
+                  return withHighlight(withRightClick);
                 })}
               </div>
             );
