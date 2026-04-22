@@ -38,6 +38,7 @@ const RELEASES: Release[] = [
     ],
     fixed: [
       "End date edits are now user-scoped (keyed by username) instead of row-scoped, so setting it once applies across all rows for that person and legacy per-row stored values are auto-migrated.",
+      "Full-import (Replace All) no longer triggers the blue cell-highlight; the highlight is now shown only after Add Data and Enrich Users imports.",
     ],
   },
   {
