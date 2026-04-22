@@ -399,12 +399,17 @@ export function parseSheetWithMapping(
     if (!skanskaVal && computername) skanskaVal = "yes";
     if (!computername) skanskaVal = "";
 
-    if (validStatus || warrantyVal || activeVal || skanskaVal) {
+    // Read Comments directly from the source row (not part of canonical mapping —
+    // it's an exported extra column that round-trips back in on re-import).
+    const commentVal = String(row["Comments"] ?? "").trim();
+
+    if (validStatus || warrantyVal || activeVal || skanskaVal || commentVal) {
       seedEdits[String(idx)] = {
         status: validStatus,
         warrantyUntil: warrantyVal,
         ...(activeVal ? { userActive: activeVal } : {}),
         ...(skanskaVal ? { skanskaComputer: skanskaVal } : {}),
+        ...(commentVal ? { comment: commentVal } : {}),
       };
     }
 
