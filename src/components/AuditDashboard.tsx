@@ -33,7 +33,7 @@ interface UserSummary {
   exceptions: string[];    // distinct exceptions across rows
   lastLogon: string;       // most recent Last logon date string we saw
   endDate: string;         // most recent End date (editable or imported)
-  isLeaverWithDevice: boolean; // inactive AND owns at least one computername
+  isLeaverWithDevice: boolean; // end date set AND owns at least one computername
   rows: AssetRow[];
 }
 
@@ -41,6 +41,7 @@ type AuditFilterKey =
   | null
   | "inactive"
   | "leaverWithDevice"
+  | "endDateYes"
   | "withoutComputer"
   | "multiComputer"
   | "nonSkanska"
@@ -118,7 +119,8 @@ export function AuditDashboard({ rows, edits, onPickUser }: Props) {
       entry.lastLogon = maxDateString(entry.lastLogon, r.raw["Last logon date"] ?? "");
       entry.endDate = maxDateString(entry.endDate, e?.endDate ?? r.raw["End date"] ?? "");
       if (isInactive) entry.active = false;
-      if (isInactive && r.computername.trim()) entry.isLeaverWithDevice = true;
+      const hasEndDate = !!(e?.endDate || r.raw["End date"] || "");
+      if (hasEndDate && r.computername.trim()) entry.isLeaverWithDevice = true;
       if (isNonSkanska) entry.hasNonSkanska = true;
       if (stale) entry.staleCount++;
     }
@@ -141,6 +143,7 @@ export function AuditDashboard({ rows, edits, onPickUser }: Props) {
     switch (filterKey) {
       case "inactive":          result = result.filter((u) => !u.active); break;
       case "leaverWithDevice":  result = result.filter((u) => u.isLeaverWithDevice); break;
+      case "endDateYes":        result = result.filter((u) => !!u.endDate); break;
       case "withoutComputer":   result = result.filter((u) => u.computers.length === 0); break;
       case "multiComputer":     result = result.filter((u) => u.computers.length > 1); break;
       case "nonSkanska":        result = result.filter((u) => u.hasNonSkanska); break;
@@ -163,16 +166,16 @@ export function AuditDashboard({ rows, edits, onPickUser }: Props) {
   const inactiveUsers = users.filter((u) => !u.active).length;
   const usersWithoutComputer = users.filter((u) => u.computers.length === 0).length;
   const usersWithMultipleComputers = users.filter((u) => u.computers.length > 1).length;
+  const usersWithEndDate = users.filter((u) => !!u.endDate).length;
   const nonSkanskaUsers = users.filter((u) => u.hasNonSkanska).length;
   const usersWithExceptions = users.filter((u) => u.exceptions.length > 0).length;
   const staleUsers = users.filter((u) => u.staleCount > 0).length;
-  // Leavers who still have a Skanska computer assigned. Computed from rows
-  // directly so we count any inactive user holding a non-empty computername.
   const leaversWithDevice = useMemo(() => {
     const set = new Set<string>();
     for (const r of rows) {
       const e = edits[getEditKey(r.id)];
-      if (effectiveUserActive(e) !== "no") continue;
+      const endDate = e?.endDate || r.raw["End date"] || "";
+      if (!endDate) continue;
       if (!r.computername.trim()) continue;
       const key = (r.user || r.raw["Username"] || "").trim().toLowerCase();
       if (!key) continue;
@@ -204,7 +207,15 @@ export function AuditDashboard({ rows, edits, onPickUser }: Props) {
       value: leaversWithDevice,
       icon: AlertTriangle,
       color: "text-destructive",
-      tooltip: "Inactive users (User Active? = No) who still have a Computername assigned. Use the End date column in the table for planned departure dates while triaging off-boarding. Click to filter.",
+      tooltip: "Users with a planned End date set who still have a Computername assigned — they need hardware collection before their departure. Click to filter.",
+    },
+    {
+      key: "endDateYes",
+      label: "End date yes",
+      value: usersWithEndDate,
+      icon: Clock,
+      color: "text-amber-500",
+      tooltip: "Users who have a planned End date set — these are known upcoming leavers. Click to filter to planned leavers only.",
     },
     {
       key: "withoutComputer",
