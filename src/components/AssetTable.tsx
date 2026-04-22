@@ -528,7 +528,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                     !!lastImportAt &&
                     !!cellStamp &&
                     new Date(cellStamp).getTime() >= lastImportAt - 1000; // 1s grace for clock skew
-                  const withHighlight = (node: React.ReactNode) =>
+                  const withHighlight = (node: ReactNode): ReactNode =>
                     isFreshImport ? (
                       <div key={col} className="relative" style={{ width: w, minWidth: MIN_COL_W }}>
                         {node}
