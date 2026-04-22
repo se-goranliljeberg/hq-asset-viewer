@@ -59,7 +59,7 @@ interface Props {
 const MIN_COL_W = 80;
 const DEFAULT_COL_W = 160;
 const CHECKBOX_COL_W = 40;
-const EDITABLE_COLS = ["Status", "Warranty until"] as const;
+const EDITABLE_COLS = ["Status", "Warranty until", "End date"] as const;
 const NON_EDITABLE_COLS = new Set(["Exceptions", "Source file"]);
 const COMMENTS_COL = "Comments";
 const HIDDEN_COLUMN_KEYS = new Set(["last account activity", "lst account activity"]);
@@ -73,7 +73,7 @@ const CANONICAL_ORDER = [
 
 // Virtual app-managed columns — always shown even when the source file
 // has no matching header. Their values come from the edits store, not row.raw.
-const VIRTUAL_CANONICAL = new Set<string>(["Status", "Warranty until", "User Active?", "Skanska computer?"]);
+const VIRTUAL_CANONICAL = new Set<string>(["Status", "Warranty until", "End date", "User Active?", "Skanska computer?"]);
 const TAIL_COLS = ["Exceptions", COMMENTS_COL, "Source file"];
 
 // Build the default display column order: canonical fields in fixed order
@@ -212,6 +212,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
       const rowEdits = edits[editKey];
       if (col === "Status") return rowEdits?.status ?? "";
       if (col === "Warranty until") return rowEdits?.warrantyUntil ?? "";
+      if (col === "End date") return rowEdits?.endDate ?? "";
       if (col === "User Active?") return effectiveUserActive(rowEdits);
       if (col === "Skanska computer?") return effectiveSkanska(rowEdits, row.computername);
       if (col === COMMENTS_COL) return rowEdits?.comment ?? "";
@@ -601,6 +602,45 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                       </div>
                     );
                     return withHighlight(wrapRightClickFilter(col, val, warrantyCell));
+                  }
+
+                  if (col === "End date") {
+                    const val = rowEdits?.endDate ?? "";
+                    let date: Date | undefined;
+                    if (val) {
+                      const parsed = parseISO(val);
+                      if (!isNaN(parsed.getTime())) date = parsed;
+                    }
+                    const endDateCell = (
+                      <div key={col} className="px-1 py-0.5" style={{ width: w, minWidth: MIN_COL_W }}>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              className={cn(
+                                "h-7 w-full justify-start text-xs font-normal px-2",
+                                !date && "text-muted-foreground",
+                              )}
+                            >
+                              <CalendarIcon className="h-3 w-3 mr-1 shrink-0" />
+                              {date ? format(date, "yyyy-MM-dd") : (val || "—")}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              mode="single"
+                              selected={date}
+                              onSelect={(d) =>
+                                onEdit(row.id, "endDate", d ? format(d, "yyyy-MM-dd") : "")
+                              }
+                              initialFocus
+                              className="p-3 pointer-events-auto"
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      </div>
+                    );
+                    return withHighlight(wrapRightClickFilter(col, val, endDateCell));
                   }
 
                   if (col === "User Active?" || col === "Skanska computer?") {
