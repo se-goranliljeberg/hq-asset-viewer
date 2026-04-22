@@ -41,6 +41,8 @@ interface Props {
   selectedIds: Set<number>;
   onSelectionChange: (ids: Set<number>) => void;
   importedAt?: ImportMeta;
+  /** ms epoch of the most recent import; cells imported at/after this glow. */
+  lastImportAt?: number | null;
   staleThreshold: number;
   /** Open the user-history drawer for this username. */
   onOpenUser?: (user: string) => void;
