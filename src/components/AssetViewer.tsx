@@ -6,7 +6,9 @@ import {
   loadMapping, saveMapping, clearAllMappings,
   isMigrated, markMigrated,
 } from "@/lib/asset-store";
-import { loadEdits, saveEdits, clearEdits, getEditKey, STATUS_OPTIONS } from "@/lib/asset-edits";
+import {
+  loadEdits, saveEdits, clearAllEdits, getEditKey, STATUS_OPTIONS, loadUserEdits, saveUserEdits,
+} from "@/lib/asset-edits";
 import {
   appendComment, describeChange, popLastEntry,
   getStoredInitials, setStoredInitials,
@@ -73,6 +75,7 @@ const FILTER_STORAGE_KEYS = {
 
 const CSV_REQUIRED_ANY_OF: CanonicalField[] = ["Username", "Computername", "Email"];
 const CSV_EMPTY_ERROR = "CSV is empty.";
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function isCsvFile(file: File): boolean {
   const name = file.name.toLowerCase();
@@ -116,6 +119,10 @@ function normalizeCsvBufferEncoding(buffer: ArrayBuffer): ArrayBuffer {
   return withBom.buffer.slice(withBom.byteOffset, withBom.byteOffset + withBom.byteLength);
 }
 
+function isIsoDate(v: string): boolean {
+  return ISO_DATE_RE.test(v);
+}
+
 function loadFilterFromStorage(key: string, fallback: string[]): string[] {
   if (typeof window === "undefined") return fallback;
   try {
@@ -154,8 +161,10 @@ export function AssetViewer() {
   const [data, setData, hydrated, setDataDirect] = useStickyState();
   const hasUnseenVersion = useHasUnseenVersion();
   const [edits, setEditsState] = useState<Record<string, AssetEdits>>({});
+  const [userEdits, setUserEdits] = useState<Record<string, string>>({});
   const dataRef = useRef<AssetData | null>(null);
   const editsRef = useRef<Record<string, AssetEdits>>({});
+  const legacyRowEndDatesRef = useRef<Record<string, string>>({});
   const [importMeta, setImportMeta] = useState<ImportMeta>({});
   // Timestamp (ms) of the most recent import action. Cells whose import meta
   // is at or after this value get a transient highlight in the table.
@@ -313,28 +322,68 @@ export function AssetViewer() {
   useEffect(() => {
     // Sanitize edits on load: clear date edit values that aren't valid YYYY-MM-DD,
     // which would otherwise crash the date picker with "Invalid time value".
-    const loaded = loadEdits();
+    const loaded = loadEdits() as Record<string, AssetEdits & { endDate?: string }>;
+    const loadedUserEdits = loadUserEdits();
     let dirty = false;
-    const cleaned: typeof loaded = {};
+    let userDirty = false;
+    const cleaned: Record<string, AssetEdits> = {};
+    const nextUserEdits: Record<string, string> = {};
+    const legacyRowEndDates: Record<string, string> = {};
+    for (const [k, v] of Object.entries(loadedUserEdits)) {
+      const date = (v ?? "").trim();
+      if (!date) continue;
+      if (isIsoDate(date)) {
+        nextUserEdits[k] = date;
+      } else {
+        userDirty = true;
+      }
+    }
+
     for (const [k, v] of Object.entries(loaded)) {
       const w = v.warrantyUntil ?? "";
       const e = v.endDate ?? "";
-      const badWarranty = !!w && !/^\d{4}-\d{2}-\d{2}$/.test(w);
-      const badEndDate = !!e && !/^\d{4}-\d{2}-\d{2}$/.test(e);
-      if (badWarranty || badEndDate) {
-        cleaned[k] = {
-          ...v,
-          ...(badWarranty ? { warrantyUntil: "" } : {}),
-          ...(badEndDate ? { endDate: "" } : {}),
-        };
+      const rest = { ...v };
+      delete rest.endDate;
+      const badWarranty = !!w && !isIsoDate(w);
+      if (badWarranty || e !== undefined) dirty = true;
+      if (e && isIsoDate(e)) legacyRowEndDates[k] = e;
+      cleaned[k] = {
+        ...rest,
+        status: rest.status ?? "",
+        warrantyUntil: badWarranty ? "" : w,
+      };
+      if (rest.status === undefined) {
         dirty = true;
-      } else {
-        cleaned[k] = v;
       }
     }
     if (dirty) saveEdits(cleaned);
+    if (userDirty) saveUserEdits(nextUserEdits);
+    legacyRowEndDatesRef.current = legacyRowEndDates;
     setEditsState(cleaned);
+    setUserEdits(nextUserEdits);
   }, []);
+
+  useEffect(() => {
+    if (!data) return;
+    const legacy = legacyRowEndDatesRef.current;
+    if (Object.keys(legacy).length === 0) return;
+    const rowsById = new Map(data.rows.map((r) => [String(r.id), r]));
+    setUserEdits((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const [rowId, endDate] of Object.entries(legacy)) {
+        const row = rowsById.get(rowId);
+        if (!row) continue;
+        const userKey = (row.user || row.raw["Username"] || "").trim().toLowerCase();
+        if (!userKey || next[userKey]) continue;
+        next[userKey] = endDate;
+        changed = true;
+      }
+      if (changed) saveUserEdits(next);
+      return changed ? next : prev;
+    });
+    legacyRowEndDatesRef.current = {};
+  }, [data]);
 
   // One-time canonical migration on hydrate
   useEffect(() => {
@@ -362,13 +411,12 @@ export function AssetViewer() {
   const performEdit = useCallback((rowId: number, field: keyof AssetEdits, value: string) => {
     setEditsState((prev) => {
       const key = getEditKey(rowId);
-      const current = prev[key] ?? { status: "", warrantyUntil: "", endDate: "" };
+      const current = prev[key] ?? { status: "", warrantyUntil: "" };
       const updated: AssetEdits = { ...current, [field]: value };
       if (field !== "comment" && (current[field] ?? "") !== value) {
         const label =
           field === "status" ? "Status" :
           field === "warrantyUntil" ? "Warranty until" :
-          field === "endDate" ? "End date" :
           String(field);
         updated.comment = appendComment(
           current.comment,
@@ -448,7 +496,7 @@ export function AssetViewer() {
       setEditsState((prev) => {
         const next = { ...prev };
         const originalKey = getEditKey(rowId);
-        const originalEditsBefore = next[originalKey] ?? { status: "", warrantyUntil: "", endDate: "" };
+        const originalEditsBefore = next[originalKey] ?? { status: "", warrantyUntil: "" };
 
         // Spin-off inherits the original row's prior edits + new status.
         const spinoffKey = getEditKey(spinoffId);
@@ -506,6 +554,18 @@ export function AssetViewer() {
     ensureInitials(() => performEdit(rowId, field, value));
   }, [performEdit, ensureInitials, data, handleStatusReturnSplit]);
 
+  const handleUserEdit = useCallback((username: string, endDate: string) => {
+    const key = username.trim().toLowerCase();
+    if (!key) return;
+    setUserEdits((prev) => {
+      const next = { ...prev };
+      if (endDate) next[key] = endDate;
+      else delete next[key];
+      saveUserEdits(next);
+      return next;
+    });
+  }, []);
+
   /**
    * Apply a batch edit to all currently selected rows.
    * - For Yes/No fields (userActive, skanskaComputer) and status, sets the
@@ -525,7 +585,7 @@ export function AssetViewer() {
           let changed = 0;
           for (const id of ids) {
             const key = getEditKey(id);
-            const current = next[key] ?? { status: "" as AssetStatus, warrantyUntil: "", endDate: "" };
+            const current = next[key] ?? { status: "" as AssetStatus, warrantyUntil: "" };
             if (kind === "comment") {
               next[key] = {
                 ...current,
@@ -599,7 +659,7 @@ export function AssetViewer() {
         if (rowIdx === -1) continue;
         const row = nextRows[rowIdx];
         const key = getEditKey(id);
-        const current = nextEdits[key] ?? { status: "", warrantyUntil: "", endDate: "" };
+        const current = nextEdits[key] ?? { status: "", warrantyUntil: "" };
 
         if (splitStatus && row.user.trim() && row.computername.trim()) {
           maxId += 1;
@@ -710,7 +770,7 @@ export function AssetViewer() {
     if (prevValue !== value) {
       setEditsState((prev) => {
         const key = getEditKey(rowId);
-        const current = prev[key] ?? { status: "", warrantyUntil: "", endDate: "" };
+        const current = prev[key] ?? { status: "", warrantyUntil: "" };
         const next = {
           ...prev,
           [key]: {
@@ -762,7 +822,18 @@ export function AssetViewer() {
       return;
     }
     if (fieldName === "End date") {
-      const next = { ...edits, [key]: { ...current, endDate: fromVal, comment: remainder } };
+      const row = data?.rows.find((r) => r.id === rowId);
+      const userKey = (row?.user || row?.raw["Username"] || "").trim().toLowerCase();
+      if (userKey) {
+        setUserEdits((prev) => {
+          const nextUserEdits = { ...prev };
+          if (fromVal) nextUserEdits[userKey] = fromVal;
+          else delete nextUserEdits[userKey];
+          saveUserEdits(nextUserEdits);
+          return nextUserEdits;
+        });
+      }
+      const next = { ...edits, [key]: { ...current, comment: remainder } };
       setEditsState(next);
       saveEdits(next);
       toast.success(`Reverted End date → "${fromVal || "(empty)"}"`);
@@ -800,28 +871,18 @@ export function AssetViewer() {
     setExceptionsOnly(key === "exceptions");
   }, [activeCard]);
 
-  const applySeedEdits = useCallback((
-    seed: Record<string, AssetEdits>,
-    opts?: { preserveEndDateWhenBlank?: boolean },
-  ) => {
+  const applySeedEdits = useCallback((seed: Record<string, AssetEdits>) => {
     if (Object.keys(seed).length > 0) {
       setEditsState((prev) => {
         const next = { ...prev };
-        const emptyEdits: AssetEdits = { status: "", warrantyUntil: "", endDate: "" };
+        const emptyEdits: AssetEdits = { status: "", warrantyUntil: "" };
         for (const [k, incoming] of Object.entries(seed)) {
           const current = next[k] ?? emptyEdits;
-          const incomingEndDate = incoming.endDate ?? "";
-          const currentEndDate = current.endDate ?? "";
-          const mergedEndDate =
-            opts?.preserveEndDateWhenBlank && incomingEndDate === "" && currentEndDate !== ""
-              ? currentEndDate
-              : incomingEndDate;
           const merged: AssetEdits = {
             ...current,
             ...incoming,
             status: incoming.status ?? current.status ?? "",
             warrantyUntil: incoming.warrantyUntil ?? current.warrantyUntil ?? "",
-            endDate: mergedEndDate,
           };
           next[k] = merged;
         }
@@ -912,19 +973,16 @@ export function AssetViewer() {
         if (field === "Status") {
           const newVal = (incomingSeed.status ?? "") as string;
           const oldVal = "(seed)"; void oldVal;
-          nextSeed = { ...(nextSeed ?? { status: "", warrantyUntil: "", endDate: "" }), status: incomingSeed.status ?? "" };
+          nextSeed = { ...(nextSeed ?? { status: "", warrantyUntil: "" }), status: incomingSeed.status ?? "" };
           audit.push(`Status to "${newVal || "(empty)"}"`);
         } else if (field === "Warranty until") {
-          nextSeed = { ...(nextSeed ?? { status: "", warrantyUntil: "", endDate: "" }), warrantyUntil: incomingSeed.warrantyUntil ?? "" };
+          nextSeed = { ...(nextSeed ?? { status: "", warrantyUntil: "" }), warrantyUntil: incomingSeed.warrantyUntil ?? "" };
           audit.push(`Warranty until to "${incomingSeed.warrantyUntil || "(empty)"}"`);
-        } else if (field === "End date") {
-          nextSeed = { ...(nextSeed ?? { status: "", warrantyUntil: "", endDate: "" }), endDate: incomingSeed.endDate ?? "" };
-          audit.push(`End date to "${incomingSeed.endDate || "(empty)"}"`);
         } else if (field === "User Active?") {
-          nextSeed = { ...(nextSeed ?? { status: "", warrantyUntil: "", endDate: "" }), userActive: incomingSeed.userActive ?? "" };
+          nextSeed = { ...(nextSeed ?? { status: "", warrantyUntil: "" }), userActive: incomingSeed.userActive ?? "" };
           audit.push(`User Active? to "${incomingSeed.userActive || "(empty)"}"`);
         } else if (field === "Skanska computer?") {
-          nextSeed = { ...(nextSeed ?? { status: "", warrantyUntil: "", endDate: "" }), skanskaComputer: incomingSeed.skanskaComputer ?? "" };
+          nextSeed = { ...(nextSeed ?? { status: "", warrantyUntil: "" }), skanskaComputer: incomingSeed.skanskaComputer ?? "" };
           audit.push(`Skanska computer? to "${incomingSeed.skanskaComputer || "(empty)"}"`);
         } else {
           const oldVal = newRaw[field] ?? "";
@@ -954,7 +1012,7 @@ export function AssetViewer() {
         const next = { ...prev };
         for (const [rowId, msgs] of auditByRow.entries()) {
           const key = getEditKey(rowId);
-          const cur = next[key] ?? { status: "", warrantyUntil: "", endDate: "" };
+          const cur = next[key] ?? { status: "", warrantyUntil: "" };
           const merged = { ...cur, ...(newSeedPatch[String(rowId)] ?? {}) };
           merged.comment = appendComment(cur.comment, `Imported update: ${msgs.join(", ")}`);
           next[key] = merged;
@@ -962,7 +1020,7 @@ export function AssetViewer() {
         // Apply seed patches that had no audit (shouldn't happen, but be safe).
         for (const [k, patch] of Object.entries(newSeedPatch)) {
           if (!auditByRow.has(Number(k))) {
-            next[k] = { ...(next[k] ?? { status: "", warrantyUntil: "", endDate: "" }), ...patch };
+            next[k] = { ...(next[k] ?? { status: "", warrantyUntil: "" }), ...patch };
           }
         }
         saveEdits(next);
@@ -1040,9 +1098,7 @@ export function AssetViewer() {
         const seed = pendingSeedEdits.current[String(i)];
         if (seed) remappedSeed[String(assignedId)] = seed;
       });
-      applySeedEdits(remappedSeed, {
-        preserveEndDateWhenBlank: !incoming.columns.includes("End date"),
-      });
+      applySeedEdits(remappedSeed);
       mergeAndPersistMeta(remapImportedAt(incoming.rows.length, (i) => idMap.get(i) ?? null));
       toast.success(`Enriched users — total rows: ${merged.rows.length}`);
       pendingParsed.current = null;
@@ -1328,7 +1384,7 @@ export function AssetViewer() {
         : withStatus;
 
       setEditsState((prev) => {
-        const next = { ...prev, [String(newId)]: { status, warrantyUntil, endDate: "", comment: withWarranty } };
+        const next = { ...prev, [String(newId)]: { status, warrantyUntil, comment: withWarranty } };
         saveEdits(next);
         return next;
       });
@@ -1462,7 +1518,7 @@ export function AssetViewer() {
         setEditsState((prev) => {
           const next = { ...prev };
           const originalKey = getEditKey(rowId);
-          const originalEditsBefore = next[originalKey] ?? { status: "", warrantyUntil: "", endDate: "" };
+          const originalEditsBefore = next[originalKey] ?? { status: "", warrantyUntil: "" };
 
           if (spinoffId !== null) {
             const spinoffKey = getEditKey(spinoffId);
@@ -1486,7 +1542,6 @@ export function AssetViewer() {
           next[originalKey] = {
             status: "Deployed at user",
             warrantyUntil: newWarranty,
-            endDate: "",
             comment: appendComment(
               undefined,
               source.kind === "new"
@@ -1614,9 +1669,10 @@ export function AssetViewer() {
 
   const handleClear = useCallback(() => {
     clearData();
-    clearEdits();
+    clearAllEdits();
     setData(null);
     setEditsState({});
+    setUserEdits({});
     setSearch("");
     setModelFilter([]);
     setUserFilter([]);
@@ -1689,10 +1745,11 @@ export function AssetViewer() {
   );
 
   const hasManualOrEdits = useMemo(() => {
-    const hasEditsVal = Object.values(edits).some((e) => e.status !== "" || e.warrantyUntil !== "" || e.endDate !== "");
+    const hasEditsVal = Object.values(edits).some((e) => e.status !== "" || e.warrantyUntil !== "");
+    const hasUserEditsVal = Object.values(userEdits).some((v) => v !== "");
     const hasManual = rows.some((r) => r.sourceFile === "Manual entry");
-    return hasEditsVal || hasManual;
-  }, [edits, rows]);
+    return hasEditsVal || hasUserEditsVal || hasManual;
+  }, [edits, userEdits, rows]);
 
   const filtered = useMemo(() => {
     const exOf = (r: AssetRow) => effectiveExceptions(r, edits[getEditKey(r.id)]);
@@ -1753,8 +1810,10 @@ export function AssetViewer() {
           va = edits[getEditKey(a.id)]?.warrantyUntil ?? "";
           vb = edits[getEditKey(b.id)]?.warrantyUntil ?? "";
         } else if (col === "End date") {
-          va = edits[getEditKey(a.id)]?.endDate ?? "";
-          vb = edits[getEditKey(b.id)]?.endDate ?? "";
+          const aUser = (a.user || a.raw["Username"] || "").trim().toLowerCase();
+          const bUser = (b.user || b.raw["Username"] || "").trim().toLowerCase();
+          va = userEdits[aUser] ?? a.raw["End date"] ?? "";
+          vb = userEdits[bUser] ?? b.raw["End date"] ?? "";
         } else if (col === "Comments") {
           va = edits[getEditKey(a.id)]?.comment ?? "";
           vb = edits[getEditKey(b.id)]?.comment ?? "";
@@ -1766,7 +1825,7 @@ export function AssetViewer() {
       });
     }
     return result;
-  }, [rows, columns, search, modelFilter, userFilter, managerFilter, sourceFilter, statusFilter, exceptionsOnly, excludeInactive, skanskaFilter, activeCard, sort, edits, staleThreshold]);
+  }, [rows, columns, search, modelFilter, userFilter, managerFilter, sourceFilter, statusFilter, exceptionsOnly, excludeInactive, skanskaFilter, activeCard, sort, edits, staleThreshold, userEdits]);
 
   const activeChips = useMemo<FilterChip[]>(() => {
     const out: FilterChip[] = [];
@@ -2084,6 +2143,8 @@ export function AssetViewer() {
                   onSort={toggleSort}
                   edits={edits}
                   onEdit={handleEdit}
+                  userEdits={userEdits}
+                  onUserEdit={handleUserEdit}
                   onCellEdit={handleCellEdit}
                   onUndoLast={handleUndoLast}
                   selectedIds={selectedIds}
@@ -2110,6 +2171,7 @@ export function AssetViewer() {
                 <AuditDashboard
                   rows={rows}
                   edits={edits}
+                  userEdits={userEdits}
                   onPickUser={(key, display) => {
                     setUserDrawerKey(key);
                     setUserDrawerDisplay(display);
@@ -2171,10 +2233,10 @@ export function AssetViewer() {
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction variant="outline" onClick={() => void exportCSV(rows, columns, edits)}>
+              <AlertDialogAction variant="outline" onClick={() => void exportCSV(rows, columns, edits, userEdits)}>
                 All data ({rows.length.toLocaleString()} rows)
               </AlertDialogAction>
-              <AlertDialogAction onClick={() => void exportCSV(exportFilteredRows, columns, edits)}>
+              <AlertDialogAction onClick={() => void exportCSV(exportFilteredRows, columns, edits, userEdits)}>
                 Filtered data ({exportFilteredRows.length.toLocaleString()} rows)
               </AlertDialogAction>
             </AlertDialogFooter>

@@ -36,6 +36,8 @@ interface Props {
   onSort: (col: string) => void;
   edits: Record<string, AssetEdits>;
   onEdit: (rowId: number, field: keyof AssetEdits, value: string) => void;
+  userEdits: Record<string, string>;
+  onUserEdit: (username: string, endDate: string) => void;
   onCellEdit: (rowId: number, column: string, value: string) => void;
   onUndoLast: (rowId: number) => void;
   selectedIds: Set<number>;
@@ -163,7 +165,7 @@ function InlineCell({ value, width, col, rowId, onCellEdit }: {
   );
 }
 
-export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellEdit, onUndoLast, selectedIds, onSelectionChange, importedAt, lastImportAt, staleThreshold, onOpenUser, onOpenAsset, onVisibleRowsChange, onColumnFiltersActiveChange, resetColumnFiltersSignal }: Props) {
+export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, userEdits, onUserEdit, onCellEdit, onUndoLast, selectedIds, onSelectionChange, importedAt, lastImportAt, staleThreshold, onOpenUser, onOpenAsset, onVisibleRowsChange, onColumnFiltersActiveChange, resetColumnFiltersSignal }: Props) {
   const parentRef = useRef<HTMLDivElement>(null);
 
   // Persisted column order
@@ -210,9 +212,10 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
     (row: AssetRow, col: string): string => {
       const editKey = getEditKey(row.id);
       const rowEdits = edits[editKey];
+      const userKey = (row.user || row.raw["Username"] || "").trim().toLowerCase();
       if (col === "Status") return rowEdits?.status ?? "";
       if (col === "Warranty until") return rowEdits?.warrantyUntil ?? "";
-      if (col === "End date") return rowEdits?.endDate ?? "";
+      if (col === "End date") return userEdits[userKey] ?? row.raw["End date"] ?? "";
       if (col === "User Active?") return effectiveUserActive(rowEdits);
       if (col === "Skanska computer?") return effectiveSkanska(rowEdits, row.computername);
       if (col === COMMENTS_COL) return rowEdits?.comment ?? "";
@@ -222,7 +225,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
       if (col === "Computername") return row.computername || row.raw[col] || "";
       return row.raw[col] ?? "";
     },
-    [edits],
+    [edits, userEdits],
   );
 
   /** Distinct values per column, computed from the unfiltered row set. */
@@ -487,7 +490,9 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
             const isOdd = vRow.index % 2 === 1;
             const editKey = getEditKey(row.id);
             const rowEdits = edits[editKey];
-            const hasEndDate = !!(rowEdits?.endDate);
+            const userKey = (row.user || row.raw["Username"] || "").trim().toLowerCase();
+            const endDateValue = userEdits[userKey] ?? row.raw["End date"] ?? "";
+            const hasEndDate = !!endDateValue;
             const rowEffectiveExceptions = effectiveExceptions(row, rowEdits);
             const hasEx = rowEffectiveExceptions.length > 0;
             const isSelected = selectedIds.has(row.id);
@@ -608,7 +613,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                   }
 
                   if (col === "End date") {
-                    const val = rowEdits?.endDate ?? "";
+                    const val = userEdits[userKey] ?? row.raw["End date"] ?? "";
                     let date: Date | undefined;
                     if (val) {
                       const parsed = parseISO(val);
@@ -634,7 +639,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                               mode="single"
                               selected={date}
                               onSelect={(d) =>
-                                onEdit(row.id, "endDate", d ? format(d, "yyyy-MM-dd") : "")
+                                onUserEdit(userKey, d ? format(d, "yyyy-MM-dd") : "")
                               }
                               initialFocus
                               className="p-3 pointer-events-auto"

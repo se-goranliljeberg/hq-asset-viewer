@@ -2,6 +2,7 @@ import type { AssetRow, LifecycleEvent, LifecycleState } from "./asset-types";
 import { getStoredInitials } from "./comment-log";
 
 const STORAGE_KEY = "hq_asset_edits";
+const USER_STORAGE_KEY = "hq_user_edits";
 
 export const STATUS_OPTIONS = ["In stock", "Deployed at user", "Sent back to broker"] as const;
 export type AssetStatus = (typeof STATUS_OPTIONS)[number] | "";
@@ -11,7 +12,6 @@ export type YesNo = "yes" | "no" | "";
 export interface AssetEdits {
   status: AssetStatus;
   warrantyUntil: string; // YYYY-MM-DD or ""
-  endDate: string; // YYYY-MM-DD or ""
   comment?: string; // free-text user note
   /** "yes" (active) is the implicit default when this field is unset. */
   userActive?: YesNo;
@@ -20,6 +20,7 @@ export interface AssetEdits {
 }
 
 type EditsMap = Record<string, AssetEdits>; // keyed by row computername+id
+export type UserEdits = Record<string, string>; // keyed by lowercased username; value is YYYY-MM-DD
 
 export function loadEdits(): EditsMap {
   try {
@@ -41,6 +42,33 @@ export function saveEdits(edits: EditsMap): void {
 
 export function clearEdits(): void {
   localStorage.removeItem(STORAGE_KEY);
+}
+
+export function loadUserEdits(): UserEdits {
+  try {
+    const raw = localStorage.getItem(USER_STORAGE_KEY);
+    if (!raw) return {};
+    return JSON.parse(raw) as UserEdits;
+  } catch {
+    return {};
+  }
+}
+
+export function saveUserEdits(edits: UserEdits): void {
+  try {
+    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(edits));
+  } catch {
+    // quota exceeded — silently fail
+  }
+}
+
+export function clearUserEdits(): void {
+  localStorage.removeItem(USER_STORAGE_KEY);
+}
+
+export function clearAllEdits(): void {
+  clearEdits();
+  clearUserEdits();
 }
 
 export function getEditKey(rowId: number): string {

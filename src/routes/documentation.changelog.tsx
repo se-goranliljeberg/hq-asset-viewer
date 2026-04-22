@@ -36,6 +36,9 @@ const RELEASES: Release[] = [
       "`End date` now participates in date normalization on import and in users-file enrichment, so it round-trips cleanly through import workflows.",
       "`End date` is included in CSV exports automatically as part of the canonical/raw columns set.",
     ],
+    fixed: [
+      "End date edits are now user-scoped (keyed by username) instead of row-scoped, so setting it once applies across all rows for that person and legacy per-row stored values are auto-migrated.",
+    ],
   },
   {
     version: "0.4.1",

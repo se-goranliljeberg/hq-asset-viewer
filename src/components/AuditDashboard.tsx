@@ -15,6 +15,7 @@ import { Search, UserX, Users, AlertTriangle, Monitor, Clock } from "lucide-reac
 interface Props {
   rows: AssetRow[];
   edits: Record<string, AssetEdits>;
+  userEdits: Record<string, string>;
   onPickUser?: (userKey: string, userDisplay: string) => void;
 }
 
@@ -70,7 +71,7 @@ function maxDateString(a: string, b: string): string {
   return a > b ? a : b;
 }
 
-export function AuditDashboard({ rows, edits, onPickUser }: Props) {
+export function AuditDashboard({ rows, edits, userEdits, onPickUser }: Props) {
   const [search, setSearch] = useState("");
   const [filterKey, setFilterKey] = useState<AuditFilterKey>(null);
   const staleThreshold = loadStaleThreshold();
@@ -85,6 +86,7 @@ export function AuditDashboard({ rows, edits, onPickUser }: Props) {
       const isInactive = effectiveUserActive(e) === "no";
       const isNonSkanska = effectiveSkanska(e, r.computername) === "no";
       const stale = isStale(r.raw["Last logon date"] ?? "", staleThreshold);
+      const resolvedEndDate = userEdits[key] ?? r.raw["End date"] ?? "";
 
       let entry = map.get(key);
       if (!entry) {
@@ -117,9 +119,9 @@ export function AuditDashboard({ rows, edits, onPickUser }: Props) {
       entry.companies.push(r.raw["Company"] ?? "");
       entry.exceptions.push(...effectiveExceptions(r, e));
       entry.lastLogon = maxDateString(entry.lastLogon, r.raw["Last logon date"] ?? "");
-      entry.endDate = maxDateString(entry.endDate, e?.endDate ?? r.raw["End date"] ?? "");
+      entry.endDate = maxDateString(entry.endDate, resolvedEndDate);
       if (isInactive) entry.active = false;
-      const hasEndDate = !!(e?.endDate || r.raw["End date"] || "");
+      const hasEndDate = !!resolvedEndDate;
       if (hasEndDate && r.computername.trim()) entry.isLeaverWithDevice = true;
       if (isNonSkanska) entry.hasNonSkanska = true;
       if (stale) entry.staleCount++;
@@ -136,7 +138,7 @@ export function AuditDashboard({ rows, edits, onPickUser }: Props) {
     return [...map.values()].sort((a, b) =>
       a.displayName.localeCompare(b.displayName, undefined, { sensitivity: "base" }),
     );
-  }, [rows, edits, staleThreshold]);
+  }, [rows, edits, staleThreshold, userEdits]);
 
   const filtered = useMemo(() => {
     let result = users;
@@ -173,16 +175,15 @@ export function AuditDashboard({ rows, edits, onPickUser }: Props) {
   const leaversWithDevice = useMemo(() => {
     const set = new Set<string>();
     for (const r of rows) {
-      const e = edits[getEditKey(r.id)];
-      const endDate = e?.endDate || r.raw["End date"] || "";
-      if (!endDate) continue;
-      if (!r.computername.trim()) continue;
       const key = (r.user || r.raw["Username"] || "").trim().toLowerCase();
       if (!key) continue;
+      const endDate = userEdits[key] ?? r.raw["End date"] ?? "";
+      if (!endDate) continue;
+      if (!r.computername.trim()) continue;
       set.add(key);
     }
     return set.size;
-  }, [rows, edits]);
+  }, [rows, userEdits]);
 
   const kpis: { key: AuditFilterKey; label: string; value: number; icon: typeof Users; color: string; tooltip: string }[] = [
     {
