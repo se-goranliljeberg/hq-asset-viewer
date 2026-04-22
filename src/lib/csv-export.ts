@@ -92,6 +92,7 @@ export async function exportCSV(
       return;
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
+      console.error("CSV export failed via File System Access API, falling back to download.", error);
     }
   }
 
