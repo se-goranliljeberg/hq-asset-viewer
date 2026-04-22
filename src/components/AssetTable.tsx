@@ -561,7 +561,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                         </Select>
                       </div>
                     );
-                    return wrapRightClickFilter(col, val, statusCell);
+                    return withHighlight(wrapRightClickFilter(col, val, statusCell));
                   }
 
                   if (col === "Warranty until") {
