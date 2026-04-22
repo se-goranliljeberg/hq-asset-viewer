@@ -520,6 +520,26 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                 </div>
                 {displayCols.map((col) => {
                   const w = colWidths[col] ?? DEFAULT_COL_W;
+                  // Highlight cells whose value was just imported in the most
+                  // recent import action. The wrapper sits on top of the cell
+                  // and renders a ring + soft tint without altering layout.
+                  const cellStamp = importedAt ? getImportedAt(importedAt, row.id, col) : undefined;
+                  const isFreshImport =
+                    !!lastImportAt &&
+                    !!cellStamp &&
+                    new Date(cellStamp).getTime() >= lastImportAt - 1000; // 1s grace for clock skew
+                  const withHighlight = (node: React.ReactNode) =>
+                    isFreshImport ? (
+                      <div key={col} className="relative" style={{ width: w, minWidth: MIN_COL_W }}>
+                        {node}
+                        <div
+                          className="pointer-events-none absolute inset-0 rounded-sm bg-primary/10 ring-1 ring-primary/40 animate-pulse"
+                          aria-hidden
+                        />
+                      </div>
+                    ) : (
+                      node
+                    );
 
                   if (col === "Status") {
                     const val = rowEdits?.status ?? "";
