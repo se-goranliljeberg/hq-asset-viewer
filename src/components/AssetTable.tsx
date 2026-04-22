@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback, useMemo, useEffect } from "react";
+import { useRef, useState, useCallback, useMemo, useEffect, type ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { AssetRow, SortState } from "@/lib/asset-types";
 import type { AssetEdits, YesNo } from "@/lib/asset-edits";
