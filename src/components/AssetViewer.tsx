@@ -2044,6 +2044,7 @@ export function AssetViewer() {
                   selectedIds={selectedIds}
                   onSelectionChange={setSelectedIds}
                   importedAt={importMeta}
+                  lastImportAt={lastImportAt}
                   staleThreshold={staleThreshold}
                   onOpenUser={(u) => {
                     setUserDrawerKey(u.trim().toLowerCase());
