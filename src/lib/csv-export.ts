@@ -97,8 +97,11 @@ export async function exportCSV(
       if (name === "AbortError" || name === "NotAllowedError") {
         return;
       }
-      console.error("CSV export failed:", err);
-      return;
+      // SecurityError happens in cross-origin iframes (e.g. the Lovable preview).
+      // Fall through to the anchor-download fallback below instead of failing.
+      if (name !== "SecurityError") {
+        console.error("CSV export failed:", err);
+      }
     }
   }
 
