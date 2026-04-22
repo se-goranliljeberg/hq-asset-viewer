@@ -1,5 +1,5 @@
 import type { AssetRow, LifecycleEvent } from "./asset-types";
-import type { AssetEdits } from "./asset-edits";
+import type { AssetEdits, UserEdits } from "./asset-edits";
 import { getEditKey, effectiveExceptions } from "./asset-edits";
 
 type SaveFilePickerWindow = Window & {
@@ -42,6 +42,7 @@ export async function exportCSV(
   rows: AssetRow[],
   columns: string[],
   edits: Record<string, AssetEdits> = {},
+  userEdits: UserEdits = {},
 ): Promise<void> {
   const escape = (v: string) => {
     if (v.includes(",") || v.includes('"') || v.includes("\n")) {
@@ -64,9 +65,10 @@ export async function exportCSV(
   const lines = rows.map((r) => {
     const cells = columns.map((c) => escape(r.raw[c] ?? ""));
     const e = edits[getEditKey(r.id)];
+    const userKey = (r.user || r.raw["Username"] || "").trim().toLowerCase();
     cells.push(escape(e?.status ?? ""));
     cells.push(escape(e?.warrantyUntil ?? ""));
-    cells.push(escape(e?.endDate ?? ""));
+    cells.push(escape(userEdits[userKey] ?? r.raw["End date"] ?? ""));
     cells.push(escape(effectiveExceptions(r, e).join("; ")));
     cells.push(escape(e?.comment ?? ""));
     cells.push(escape(formatHistory(r.history)));
