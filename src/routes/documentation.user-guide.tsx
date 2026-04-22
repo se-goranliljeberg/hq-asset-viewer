@@ -99,10 +99,11 @@ function UserGuide() {
           you&rsquo;ll see every header from the source file with a sample value. On the right you
           choose which canonical field it should become — or <strong>Ignore</strong> to drop it.
         </p>
-        <p className="mt-2">The 13 canonical fields the app understands are:</p>
+        <p className="mt-2">The 17 canonical fields the app understands are:</p>
         <p className="mt-1 font-mono text-xs">
-          Username · Name · Computername · Modell · Last account activity · Status · Warranty until
-          · AD Create.Date · Company · Email · Department · User Active? · Skanska computer?
+          Username · Name · Computername · Modell · Last account activity · Last logon date · Status
+          · Warranty until · AD Create.Date · End date · Company · Email · Department · Manager ·
+          User Active? · Skanska computer? · OU
         </p>
         <Info_>
           The app pre-fills the mapping using known aliases (e.g. <code>mail</code> → Email,
@@ -195,6 +196,10 @@ function UserGuide() {
           Both columns are importable (the parser recognises common aliases like
           <code> enabled</code>, <code> disabled</code>, <code> company device</code>, etc.),
           inline-editable, and included in CSV exports.
+        </p>
+        <p className="mt-2">
+          <strong>End date</strong> is a separate planning field for leavers: set the expected
+          last working day / departure date to support offboarding tracking and reporting.
         </p>
         <p className="mt-2">
           <strong>Dynamic exceptions.</strong> The Exceptions column adapts to these two

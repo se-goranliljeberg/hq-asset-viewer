@@ -67,7 +67,7 @@ const HIDDEN_COLUMN_KEYS = new Set(["last account activity", "lst account activi
 // Canonical left-to-right display order.
 const CANONICAL_ORDER = [
   "Username", "Name", "Computername", "Modell", "Last logon date",
-  "Status", "Warranty until", "AD Create.Date", "Company", "Email", "Department", "Manager",
+  "Status", "Warranty until", "AD Create.Date", "End date", "Company", "Email", "Department", "Manager",
   "User Active?", "Skanska computer?", "OU",
 ] as const;
 

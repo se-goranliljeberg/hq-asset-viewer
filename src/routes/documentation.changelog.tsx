@@ -28,6 +28,16 @@ interface Release {
 
 const RELEASES: Release[] = [
   {
+    version: "0.4.2",
+    date: "2026-04-22",
+    title: "Leaver planning end-date column",
+    added: [
+      "New canonical `End date` column for leaver planning/reporting (expected last working day / departure date), including alias and fuzzy-header detection during import.",
+      "`End date` now participates in date normalization on import and in users-file enrichment, so it round-trips cleanly through import workflows.",
+      "`End date` is included in CSV exports automatically as part of the canonical/raw columns set.",
+    ],
+  },
+  {
     version: "0.4.1",
     date: "2026-04-20",
     title: "Handover state, Asset Management & User History tabs",
