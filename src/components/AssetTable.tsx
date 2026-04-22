@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback, useMemo, useEffect } from "react";
+import { useRef, useState, useCallback, useMemo, useEffect, type ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { AssetRow, SortState } from "@/lib/asset-types";
 import type { AssetEdits, YesNo } from "@/lib/asset-edits";
@@ -41,6 +41,8 @@ interface Props {
   selectedIds: Set<number>;
   onSelectionChange: (ids: Set<number>) => void;
   importedAt?: ImportMeta;
+  /** ms epoch of the most recent import; cells imported at/after this glow. */
+  lastImportAt?: number | null;
   staleThreshold: number;
   /** Open the user-history drawer for this username. */
   onOpenUser?: (user: string) => void;
@@ -161,7 +163,7 @@ function InlineCell({ value, width, col, rowId, onCellEdit }: {
   );
 }
 
-export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellEdit, onUndoLast, selectedIds, onSelectionChange, importedAt, staleThreshold, onOpenUser, onOpenAsset, onVisibleRowsChange, onColumnFiltersActiveChange, resetColumnFiltersSignal }: Props) {
+export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellEdit, onUndoLast, selectedIds, onSelectionChange, importedAt, lastImportAt, staleThreshold, onOpenUser, onOpenAsset, onVisibleRowsChange, onColumnFiltersActiveChange, resetColumnFiltersSignal }: Props) {
   const parentRef = useRef<HTMLDivElement>(null);
 
   // Persisted column order
@@ -518,6 +520,26 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                 </div>
                 {displayCols.map((col) => {
                   const w = colWidths[col] ?? DEFAULT_COL_W;
+                  // Highlight cells whose value was just imported in the most
+                  // recent import action. The wrapper sits on top of the cell
+                  // and renders a ring + soft tint without altering layout.
+                  const cellStamp = importedAt ? getImportedAt(importedAt, row.id, col) : undefined;
+                  const isFreshImport =
+                    !!lastImportAt &&
+                    !!cellStamp &&
+                    new Date(cellStamp).getTime() >= lastImportAt - 1000; // 1s grace for clock skew
+                  const withHighlight = (node: ReactNode): ReactNode =>
+                    isFreshImport ? (
+                      <div key={col} className="relative" style={{ width: w, minWidth: MIN_COL_W }}>
+                        {node}
+                        <div
+                          className="pointer-events-none absolute inset-0 rounded-sm bg-primary/10 ring-1 ring-primary/40 animate-pulse"
+                          aria-hidden
+                        />
+                      </div>
+                    ) : (
+                      node
+                    );
 
                   if (col === "Status") {
                     const val = rowEdits?.status ?? "";
@@ -539,7 +561,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                         </Select>
                       </div>
                     );
-                    return wrapRightClickFilter(col, val, statusCell);
+                    return withHighlight(wrapRightClickFilter(col, val, statusCell));
                   }
 
                   if (col === "Warranty until") {
@@ -578,7 +600,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                         </Popover>
                       </div>
                     );
-                    return wrapRightClickFilter(col, val, warrantyCell);
+                    return withHighlight(wrapRightClickFilter(col, val, warrantyCell));
                   }
 
                   if (col === "User Active?" || col === "Skanska computer?") {
@@ -610,14 +632,14 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                         </Select>
                       </div>
                     );
-                    return wrapRightClickFilter(col, effective, yesNoCell);
+                    return withHighlight(wrapRightClickFilter(col, effective, yesNoCell));
                   }
 
                   if (col === COMMENTS_COL) {
                     const val = rowEdits?.comment ?? "";
                     const entries = parseEntries(val);
                     const canUndo = entries.some((e) => !e.isNote && !!e.field);
-                    return (
+                    return withHighlight(
                       <CommentCell
                         key={col}
                         value={val}
@@ -626,7 +648,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                         onEdit={(rid, v) => onEdit(rid, "comment", v)}
                         onUndo={onUndoLast}
                         canUndo={canUndo}
-                      />
+                      />,
                     );
                   }
 
@@ -647,7 +669,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                         )}
                       </div>
                     );
-                    return wrapRightClickFilter(col, val, readOnlyCell);
+                    return withHighlight(wrapRightClickFilter(col, val, readOnlyCell));
                   }
 
                   // Clickable Username / Computername — open the relevant drawer.
@@ -673,7 +695,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                         )}
                       </div>
                     );
-                    return wrapRightClickFilter(col, val, userCell);
+                    return withHighlight(wrapRightClickFilter(col, val, userCell));
                   }
                   if (col === "Computername" && onOpenAsset) {
                     const val = row.computername || row.raw[col] || "";
@@ -697,7 +719,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                         )}
                       </div>
                     );
-                    return wrapRightClickFilter(col, val, computerCell);
+                    return withHighlight(wrapRightClickFilter(col, val, computerCell));
                   }
 
                   // Editable raw data columns — double-click to edit
@@ -737,7 +759,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                         : `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
                     }
                     if (stampLabel || isStaleVal) {
-                      return (
+                      return withHighlight(
                         <Tooltip key={col}>
                           <TooltipTrigger asChild>
                             <div>{withRightClick}</div>
@@ -750,11 +772,11 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                               </div>
                             )}
                           </TooltipContent>
-                        </Tooltip>
+                        </Tooltip>,
                       );
                     }
                   }
-                  return withRightClick;
+                  return withHighlight(withRightClick);
                 })}
               </div>
             );

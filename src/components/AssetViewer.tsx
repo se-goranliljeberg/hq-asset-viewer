@@ -157,10 +157,20 @@ export function AssetViewer() {
   const dataRef = useRef<AssetData | null>(null);
   const editsRef = useRef<Record<string, AssetEdits>>({});
   const [importMeta, setImportMeta] = useState<ImportMeta>({});
+  // Timestamp (ms) of the most recent import action. Cells whose import meta
+  // is at or after this value get a transient highlight in the table.
+  const [lastImportAt, setLastImportAt] = useState<number | null>(null);
 
   useEffect(() => { setImportMeta(loadImportMeta()); }, []);
   useEffect(() => { dataRef.current = data; }, [data]);
   useEffect(() => { editsRef.current = edits; }, [edits]);
+
+  // Auto-clear the import highlight after 60 seconds so it doesn't linger.
+  useEffect(() => {
+    if (lastImportAt === null) return;
+    const t = setTimeout(() => setLastImportAt(null), 60_000);
+    return () => clearTimeout(t);
+  }, [lastImportAt]);
 
   const mergeAndPersistMeta = useCallback((incoming: ImportMeta) => {
     setImportMeta((prev) => {
@@ -168,6 +178,7 @@ export function AssetViewer() {
       saveImportMeta(next);
       return next;
     });
+    setLastImportAt(Date.now());
   }, []);
   const defaultStatusFilter = useMemo(
     () => [STATUS_NONE_TOKEN, ...STATUS_OPTIONS].filter((s) => s !== "Sent back to broker"),
@@ -2033,6 +2044,7 @@ export function AssetViewer() {
                   selectedIds={selectedIds}
                   onSelectionChange={setSelectedIds}
                   importedAt={importMeta}
+                  lastImportAt={lastImportAt}
                   staleThreshold={staleThreshold}
                   onOpenUser={(u) => {
                     setUserDrawerKey(u.trim().toLowerCase());
