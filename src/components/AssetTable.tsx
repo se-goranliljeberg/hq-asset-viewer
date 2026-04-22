@@ -695,7 +695,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                         )}
                       </div>
                     );
-                    return wrapRightClickFilter(col, val, userCell);
+                    return withHighlight(wrapRightClickFilter(col, val, userCell));
                   }
                   if (col === "Computername" && onOpenAsset) {
                     const val = row.computername || row.raw[col] || "";
