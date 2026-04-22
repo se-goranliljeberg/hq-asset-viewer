@@ -632,7 +632,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                         </Select>
                       </div>
                     );
-                    return wrapRightClickFilter(col, effective, yesNoCell);
+                    return withHighlight(wrapRightClickFilter(col, effective, yesNoCell));
                   }
 
                   if (col === COMMENTS_COL) {
