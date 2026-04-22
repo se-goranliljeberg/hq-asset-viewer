@@ -669,7 +669,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                         )}
                       </div>
                     );
-                    return wrapRightClickFilter(col, val, readOnlyCell);
+                    return withHighlight(wrapRightClickFilter(col, val, readOnlyCell));
                   }
 
                   // Clickable Username / Computername — open the relevant drawer.
