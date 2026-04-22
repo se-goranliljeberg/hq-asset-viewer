@@ -27,6 +27,7 @@ export const CANONICAL_FIELDS = [
   "User Active?",
   "Skanska computer?",
   "OU",
+  "End date",
 ] as const;
 
 export type CanonicalField = (typeof CANONICAL_FIELDS)[number];
@@ -55,6 +56,7 @@ const ALIASES: Record<CanonicalField, string[]> = {
   "User Active?": ["user active", "useractive", "active", "enabled", "accountdisabled", "account disabled", "disabled", "is active", "isactive"],
   "Skanska computer?": ["skanska computer", "skanskacomputer", "skanska device", "company device", "corporate device", "company computer", "corporate computer"],
   OU: ["ou", "organizational unit", "organisational unit", "organizationunit", "ad ou", "ad path", "distinguishedname", "distinguished name", "dn", "canonicalname", "canonical name"],
+  "End date": ["end date", "enddate", "leaving date", "leaver date", "termination date", "offboarding date", "departure date", "last day", "last working day"],
 };
 
 // Substring patterns for fuzzy matches (when alias miss).
@@ -75,6 +77,7 @@ const FUZZY_SUBSTRINGS: Record<CanonicalField, string[]> = {
   "User Active?": ["active", "enabled", "disabled"],
   "Skanska computer?": ["skanska", "company device", "corporate device"],
   OU: ["organizational unit", "organisational unit", "ou=", "distinguished", "canonicalname"],
+  "End date": ["end date", "leaving date", "termination", "offboard", "departure date", "last day", "last working day"],
 };
 
 export interface MappingDetection {
@@ -310,6 +313,7 @@ export function parseSheetWithMapping(
     "AD Create.Date",
     "Last account activity",
     "Last logon date",
+    "End date",
   ]);
 
   // Detect users-only file: no Computername mapped, OR all rows empty in it.
@@ -496,8 +500,8 @@ export function enrichWithUsers(existing: AssetData, incoming: AssetData): Asset
         const val = incoming_row.raw[col] ?? "";
         if (val && !target.raw[col]) target.raw[col] = val;
       }
-      // Also enrich Name / Company / Manager / Last logon date if available
-      for (const col of ["Name", "Company", "Manager", "Last logon date"] as CanonicalField[]) {
+      // Also enrich Name / Company / Manager / Last logon date / End date if available
+      for (const col of ["Name", "Company", "Manager", "Last logon date", "End date"] as CanonicalField[]) {
         const val = incoming_row.raw[col] ?? "";
         if (val && !target.raw[col]) target.raw[col] = val;
       }
@@ -763,4 +767,3 @@ export function migrateLifecycle(data: AssetData): { data: AssetData; changed: b
   });
   return { data: changed ? { ...data, rows } : data, changed };
 }
-
