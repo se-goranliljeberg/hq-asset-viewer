@@ -719,7 +719,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                         )}
                       </div>
                     );
-                    return wrapRightClickFilter(col, val, computerCell);
+                    return withHighlight(wrapRightClickFilter(col, val, computerCell));
                   }
 
                   // Editable raw data columns — double-click to edit
