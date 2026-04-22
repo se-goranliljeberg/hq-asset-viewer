@@ -487,6 +487,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
             const isOdd = vRow.index % 2 === 1;
             const editKey = getEditKey(row.id);
             const rowEdits = edits[editKey];
+            const hasEndDate = !!(rowEdits?.endDate);
             const rowEffectiveExceptions = effectiveExceptions(row, rowEdits);
             const hasEx = rowEffectiveExceptions.length > 0;
             const isSelected = selectedIds.has(row.id);
@@ -494,15 +495,17 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
             return (
               <div
                 key={row.id}
-                className={`absolute left-0 flex items-center text-sm ${
+                className={cn(
+                  "absolute left-0 flex items-center text-sm",
                   isSelected
                     ? "bg-primary/10"
                     : hasEx
                       ? "bg-destructive/5"
                       : isOdd
                         ? "bg-muted/30"
-                        : "bg-transparent"
-                }`}
+                        : "bg-transparent",
+                  hasEndDate && "text-red-600 dark:text-red-400",
+                )}
                 style={{
                   top: vRow.start,
                   height: vRow.size,
