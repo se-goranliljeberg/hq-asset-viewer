@@ -2114,10 +2114,10 @@ export function AssetViewer() {
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction variant="outline" onClick={() => exportCSV(rows, columns, edits)}>
+              <AlertDialogAction variant="outline" onClick={() => void exportCSV(rows, columns, edits)}>
                 All data ({rows.length.toLocaleString()} rows)
               </AlertDialogAction>
-              <AlertDialogAction onClick={() => exportCSV(exportFilteredRows, columns, edits)}>
+              <AlertDialogAction onClick={() => void exportCSV(exportFilteredRows, columns, edits)}>
                 Filtered data ({exportFilteredRows.length.toLocaleString()} rows)
               </AlertDialogAction>
             </AlertDialogFooter>
