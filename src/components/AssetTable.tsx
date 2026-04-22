@@ -600,7 +600,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, onCellE
                         </Popover>
                       </div>
                     );
-                    return wrapRightClickFilter(col, val, warrantyCell);
+                    return withHighlight(wrapRightClickFilter(col, val, warrantyCell));
                   }
 
                   if (col === "User Active?" || col === "Skanska computer?") {
