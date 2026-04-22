@@ -54,6 +54,7 @@ export async function exportCSV(
     ...columns,
     "Status",
     "Warranty until",
+    "End date",
     "Exceptions",
     "Comments",
     "Change History",
@@ -65,6 +66,7 @@ export async function exportCSV(
     const e = edits[getEditKey(r.id)];
     cells.push(escape(e?.status ?? ""));
     cells.push(escape(e?.warrantyUntil ?? ""));
+    cells.push(escape(e?.endDate ?? ""));
     cells.push(escape(effectiveExceptions(r, e).join("; ")));
     cells.push(escape(e?.comment ?? ""));
     cells.push(escape(formatHistory(r.history)));

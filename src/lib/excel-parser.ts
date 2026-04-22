@@ -303,6 +303,7 @@ export function parseSheetWithMapping(
   const emailHeader = fieldToHeader["Email"];
   const statusHeader = fieldToHeader["Status"];
   const warrantyHeader = fieldToHeader["Warranty until"];
+  const endDateHeader = fieldToHeader["End date"];
   const createdHeader = fieldToHeader["AD Create.Date"];
   const activeHeader = fieldToHeader["User Active?"];
   const skanskaHeader = fieldToHeader["Skanska computer?"];
@@ -391,9 +392,10 @@ export function parseSheetWithMapping(
 
     if (Object.keys(rowStamps).length > 0) importedAt[idx] = rowStamps;
 
-    // Seed edits from imported Status / Warranty until / Active / Skanska columns
+    // Seed edits from imported Status / Warranty until / End date / Active / Skanska columns
     const statusVal = statusHeader ? String(row[statusHeader] ?? "").trim() : "";
     const warrantyVal = warrantyHeader ? normalizeDate(row[warrantyHeader]) : "";
+    const endDateVal = endDateHeader ? normalizeDate(row[endDateHeader]) : "";
     const validStatus = normalizeStatus(statusVal);
     const activeVal: YesNo = activeHeader
       ? normalizeYesNo(row[activeHeader], activeHeaderInverts)
@@ -407,10 +409,11 @@ export function parseSheetWithMapping(
     // it's an exported extra column that round-trips back in on re-import).
     const commentVal = String(row["Comments"] ?? "").trim();
 
-    if (validStatus || warrantyVal || activeVal || skanskaVal || commentVal) {
+    if (validStatus || warrantyVal || endDateVal || activeVal || skanskaVal || commentVal) {
       seedEdits[String(idx)] = {
         status: validStatus,
         warrantyUntil: warrantyVal,
+        endDate: endDateVal,
         ...(activeVal ? { userActive: activeVal } : {}),
         ...(skanskaVal ? { skanskaComputer: skanskaVal } : {}),
         ...(commentVal ? { comment: commentVal } : {}),
@@ -666,6 +669,9 @@ export function detectUsernameConflicts(
       } else if (f === "Warranty until") {
         newVal = incomingSeed?.warrantyUntil ?? "";
         oldVal = existingSeed?.warrantyUntil ?? "";
+      } else if (f === "End date") {
+        newVal = incomingSeed?.endDate ?? "";
+        oldVal = existingSeed?.endDate ?? "";
       } else if (f === "User Active?") {
         newVal = incomingSeed?.userActive ?? "";
         oldVal = existingSeed?.userActive ?? "";

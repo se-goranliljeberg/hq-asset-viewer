@@ -11,6 +11,7 @@ export type YesNo = "yes" | "no" | "";
 export interface AssetEdits {
   status: AssetStatus;
   warrantyUntil: string; // YYYY-MM-DD or ""
+  endDate: string; // YYYY-MM-DD or ""
   comment?: string; // free-text user note
   /** "yes" (active) is the implicit default when this field is unset. */
   userActive?: YesNo;
