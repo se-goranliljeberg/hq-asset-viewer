@@ -1119,6 +1119,7 @@ export function AssetViewer() {
       // Replace clobbers prior data, so reset rather than merge.
       saveImportMeta(meta);
       setImportMeta(meta);
+      setLastImportAt(null);
       toast.success(`Replaced with ${pendingParsed.current.rows.length} rows`);
       pendingParsed.current = null;
       pendingSeedEdits.current = {};
