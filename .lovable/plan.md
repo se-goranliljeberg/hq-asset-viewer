@@ -1,5 +1,3 @@
-
-
 ## CSV Export: History, Save As Dialog, Remembered Location
 
 Three connected improvements to the CSV export, all isolated to `src/lib/csv-export.ts` (with a tiny adjustment in `AssetViewer.tsx` to handle the now-async function).
@@ -11,12 +9,14 @@ Three connected improvements to the CSV export, all isolated to `src/lib/csv-exp
 Each `AssetRow.history?: LifecycleEvent[]` will be serialised into a single human-readable cell, placed **after `Comments`** and **before `Source file`** so existing column order is preserved up to that point.
 
 Per-event format:
+
 ```text
 [YYYY-MM-DD HH:mm by INITIALS] FROM → TO (user: USER; prevUser: PREVUSER; note: NOTE)
 ```
 
 Rules:
-- Multiple events joined with ` | `.
+
+- Multiple events joined with `|`.
 - `from` omitted entirely when empty/absent → renders as `→ TO`.
 - Optional fields (`user`, `prevUser`, `note`) only included when present; the parenthesised suffix is omitted entirely if all three are missing.
 - Timestamp formatted from the ISO `at` string into local-readable `YYYY-MM-DD HH:mm` (using `Date` + simple `padStart`, no new deps).
@@ -24,6 +24,7 @@ Rules:
 - The whole serialised string is run through the existing CSV `escape()` so embedded commas, quotes, newlines, and pipes are all safe.
 
 Final column order:
+
 ```text
 …columns…, Status, Warranty until, Exceptions, Comments, Change History, Source file
 ```
@@ -76,11 +77,12 @@ The DOM lib types for `showSaveFilePicker` are only present in very recent `lib.
 - Type `lastFileHandle` as `FileSystemFileHandle | undefined` (this global type is widely available; if it isn't, alias it as `unknown` and cast at the boundary — decided at implementation time based on whether `tsc` complains).
 
 **Files touched**
+
 - `src/lib/csv-export.ts` — full rewrite of `exportCSV`, plus the module-level handle and a small `formatHistory(history)` helper.
 - `src/components/AssetViewer.tsx` — change two call sites from `exportCSV(...)` to `void exportCSV(...)`.
 
 **Not changed**
+
 - No new dependencies.
 - No UTF-8 BOM added (current file doesn't use one).
 - Column order before `Comments` is unchanged, so existing CSV consumers that read by position up to and including `Comments` keep working; only consumers that hard-code `Source file`'s index need to shift by one.
-
