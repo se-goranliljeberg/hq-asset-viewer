@@ -32,6 +32,7 @@ interface UserSummary {
   staleCount: number;      // rows with stale Last logon date
   exceptions: string[];    // distinct exceptions across rows
   lastLogon: string;       // most recent Last logon date string we saw
+  endDate: string;         // most recent End date (editable or imported)
   isLeaverWithDevice: boolean; // inactive AND owns at least one computername
   rows: AssetRow[];
 }
@@ -100,6 +101,7 @@ export function AuditDashboard({ rows, edits, onPickUser }: Props) {
           staleCount: 0,
           exceptions: [],
           lastLogon: "",
+          endDate: "",
           isLeaverWithDevice: false,
           rows: [],
         };
@@ -114,6 +116,7 @@ export function AuditDashboard({ rows, edits, onPickUser }: Props) {
       entry.companies.push(r.raw["Company"] ?? "");
       entry.exceptions.push(...effectiveExceptions(r, e));
       entry.lastLogon = maxDateString(entry.lastLogon, r.raw["Last logon date"] ?? "");
+      entry.endDate = maxDateString(entry.endDate, e?.endDate ?? r.raw["End date"] ?? "");
       if (isInactive) entry.active = false;
       if (isInactive && r.computername.trim()) entry.isLeaverWithDevice = true;
       if (isNonSkanska) entry.hasNonSkanska = true;
@@ -201,7 +204,7 @@ export function AuditDashboard({ rows, edits, onPickUser }: Props) {
       value: leaversWithDevice,
       icon: AlertTriangle,
       color: "text-destructive",
-      tooltip: "Inactive users (User Active? = No) who still have a Computername assigned. These rows carry the 'Assigned to inactive user' exception and should be top of the off-boarding list. Click to filter.",
+      tooltip: "Inactive users (User Active? = No) who still have a Computername assigned. Use the End date column in the table for planned departure dates while triaging off-boarding. Click to filter.",
     },
     {
       key: "withoutComputer",
@@ -327,6 +330,7 @@ export function AuditDashboard({ rows, edits, onPickUser }: Props) {
                   <TableRow>
                     <TableHead>User</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>End date</TableHead>
                     <TableHead className="text-right">Computers</TableHead>
                     <TableHead>Models</TableHead>
                     <TableHead>Manager</TableHead>
@@ -338,7 +342,7 @@ export function AuditDashboard({ rows, edits, onPickUser }: Props) {
                 <TableBody>
                   {filtered.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center text-muted-foreground py-8 text-sm">
+                      <TableCell colSpan={9} className="text-center text-muted-foreground py-8 text-sm">
                         No users match the current search.
                       </TableCell>
                     </TableRow>
@@ -356,6 +360,9 @@ export function AuditDashboard({ rows, edits, onPickUser }: Props) {
                         ) : (
                           <Badge variant="destructive" className="text-xs">Inactive</Badge>
                         )}
+                      </TableCell>
+                      <TableCell className="text-xs tabular-nums">
+                        {u.endDate || <span className="text-muted-foreground italic">—</span>}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
                         {u.computers.length === 0 ? (

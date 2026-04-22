@@ -800,10 +800,31 @@ export function AssetViewer() {
     setExceptionsOnly(key === "exceptions");
   }, [activeCard]);
 
-  const applySeedEdits = useCallback((seed: Record<string, AssetEdits>) => {
+  const applySeedEdits = useCallback((
+    seed: Record<string, AssetEdits>,
+    opts?: { preserveEndDateWhenBlank?: boolean },
+  ) => {
     if (Object.keys(seed).length > 0) {
       setEditsState((prev) => {
-        const next = { ...prev, ...seed };
+        const next = { ...prev };
+        const emptyEdits: AssetEdits = { status: "", warrantyUntil: "", endDate: "" };
+        for (const [k, incoming] of Object.entries(seed)) {
+          const current = next[k] ?? emptyEdits;
+          const incomingEndDate = incoming.endDate ?? "";
+          const currentEndDate = current.endDate ?? "";
+          const mergedEndDate =
+            opts?.preserveEndDateWhenBlank && incomingEndDate === "" && currentEndDate !== ""
+              ? currentEndDate
+              : incomingEndDate;
+          const merged: AssetEdits = {
+            ...current,
+            ...incoming,
+            status: incoming.status ?? current.status ?? "",
+            warrantyUntil: incoming.warrantyUntil ?? current.warrantyUntil ?? "",
+            endDate: mergedEndDate,
+          };
+          next[k] = merged;
+        }
         saveEdits(next);
         return next;
       });
@@ -1019,7 +1040,9 @@ export function AssetViewer() {
         const seed = pendingSeedEdits.current[String(i)];
         if (seed) remappedSeed[String(assignedId)] = seed;
       });
-      applySeedEdits(remappedSeed);
+      applySeedEdits(remappedSeed, {
+        preserveEndDateWhenBlank: !incoming.columns.includes("End date"),
+      });
       mergeAndPersistMeta(remapImportedAt(incoming.rows.length, (i) => idMap.get(i) ?? null));
       toast.success(`Enriched users — total rows: ${merged.rows.length}`);
       pendingParsed.current = null;
