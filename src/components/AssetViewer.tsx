@@ -181,14 +181,18 @@ export function AssetViewer() {
     return () => clearTimeout(t);
   }, [lastImportAt]);
 
-  const mergeAndPersistMeta = useCallback((incoming: ImportMeta) => {
-    setImportMeta((prev) => {
-      const next = mergeImportMeta(prev, incoming);
-      saveImportMeta(next);
-      return next;
-    });
-    setLastImportAt(Date.now());
-  }, []);
+  const mergeAndPersistMeta = useCallback(
+    (incoming: ImportMeta, opts: { highlight?: boolean } = {}) => {
+      setImportMeta((prev) => {
+        const next = mergeImportMeta(prev, incoming);
+        saveImportMeta(next);
+        return next;
+      });
+      if (opts.highlight !== false) setLastImportAt(Date.now());
+      else setLastImportAt(null);
+    },
+    [],
+  );
   const defaultStatusFilter = useMemo(
     () => [STATUS_NONE_TOKEN, ...STATUS_OPTIONS].filter((s) => s !== "Sent back to broker"),
     [],
