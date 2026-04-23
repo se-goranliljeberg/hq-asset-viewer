@@ -925,7 +925,7 @@ export function AssetViewer() {
       // Fresh load: row ids === original idx in parse result.
       const meta: ImportMeta = {};
       for (const [k, v] of Object.entries(result.importedAt)) meta[Number(k)] = { ...v };
-      mergeAndPersistMeta(meta);
+      mergeAndPersistMeta(meta, { highlight: false });
       toast.success(`Loaded ${result.data.rows.length} rows from "${result.data.filename}"`);
     }
   }, [data, setData, applySeedEdits, mergeAndPersistMeta]);
