@@ -5,6 +5,7 @@ import tailwindcss from "@tailwindcss/vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 
 export default defineConfig({
+  base: "./",
   plugins: [TanStackRouterVite(), react(), tailwindcss(), tsconfigPaths()],
   build: {
     outDir: "dist",
