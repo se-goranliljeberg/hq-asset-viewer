@@ -1,88 +1,52 @@
-## CSV Export: History, Save As Dialog, Remembered Location
 
-Three connected improvements to the CSV export, all isolated to `src/lib/csv-export.ts` (with a tiny adjustment in `AssetViewer.tsx` to handle the now-async function).
 
----
+## Remove Highlight on Full Imports
 
-### 1. New "Change History" column
+The "fresh import" highlight should fire only for **Add data** and **Enrich data** flows — not for full/replace imports (where every cell would light up, which is meaningless and visually noisy).
 
-Each `AssetRow.history?: LifecycleEvent[]` will be serialised into a single human-readable cell, placed **after `Comments`** and **before `Source file`** so existing column order is preserved up to that point.
+### Current behaviour
 
-Per-event format:
+`mergeAndPersistMeta` in `src/components/AssetViewer.tsx` always calls `setLastImportAt(Date.now())`, which the table reads to glow recently-imported cells.
 
-```text
-[YYYY-MM-DD HH:mm by INITIALS] FROM → TO (user: USER; prevUser: PREVUSER; note: NOTE)
+Two import paths currently trigger highlighting incorrectly:
+
+1. **Fresh load** (`applyParsed`, line 924) — when there's no existing data, the file becomes the entire dataset. Every cell is "freshly imported" → entire table glows.
+2. **Replace** (`handleImportReplace`, line 1122) — already correctly resets `setLastImportAt(null)` after the merge call, so this one is fine.
+
+Add (line 1183) and Enrich (line 1102) and the conflict-resolution continuations (lines 1208, 1228, 1331) should keep highlighting — those are the cases where you're augmenting existing rows and want to see what changed.
+
+### Change
+
+Split `mergeAndPersistMeta` into two behaviours by adding an optional `highlight` flag (default `true`), then call it with `highlight: false` from the fresh-load branch of `applyParsed`.
+
+```ts
+const mergeAndPersistMeta = useCallback(
+  (incoming: ImportMeta, opts: { highlight?: boolean } = {}) => {
+    setImportMeta((prev) => {
+      const next = mergeImportMeta(prev, incoming);
+      saveImportMeta(next);
+      return next;
+    });
+    if (opts.highlight !== false) setLastImportAt(Date.now());
+    else setLastImportAt(null);
+  },
+  [],
+);
 ```
 
-Rules:
+Then in `applyParsed`'s fresh-load branch (line 924):
 
-- Multiple events joined with `|`.
-- `from` omitted entirely when empty/absent → renders as `→ TO`.
-- Optional fields (`user`, `prevUser`, `note`) only included when present; the parenthesised suffix is omitted entirely if all three are missing.
-- Timestamp formatted from the ISO `at` string into local-readable `YYYY-MM-DD HH:mm` (using `Date` + simple `padStart`, no new deps).
-- Empty/missing `history` → empty string.
-- The whole serialised string is run through the existing CSV `escape()` so embedded commas, quotes, newlines, and pipes are all safe.
-
-Final column order:
-
-```text
-…columns…, Status, Warranty until, Exceptions, Comments, Change History, Source file
+```ts
+mergeAndPersistMeta(meta, { highlight: false });
 ```
 
-### 2. Native Save As dialog via File System Access API
+`handleImportReplace` keeps its explicit `setLastImportAt(null)` (it doesn't go through `mergeAndPersistMeta` at all — it writes meta directly), so no change there.
 
-Replace the current invisible `<a>.click()` auto-download with `window.showSaveFilePicker`:
+Add / Enrich / conflict-resolution paths continue to call `mergeAndPersistMeta(...)` with no second argument → highlighting stays on for those.
 
-- `suggestedName`: `asset-export-YYYY-MM-DD.csv` (same as today).
-- `types`: `[{ description: 'CSV file', accept: { 'text/csv': ['.csv'] } }]`.
-- Write the CSV via `await handle.createWritable()` → `writable.write(blob)` → `writable.close()`.
-- Cancellation handling: catch `AbortError` (and `NotAllowedError`) silently — no toast, no console noise.
-- Other errors: log to console only (the export is user-initiated and non-critical).
+### Files touched
 
-### 3. Remember the last saved location
+- `src/components/AssetViewer.tsx` — modify `mergeAndPersistMeta` signature + the one fresh-load call site at line 924.
 
-- Module-level `let lastFileHandle: FileSystemFileHandle | undefined` in `csv-export.ts`.
-- After a successful save, store the handle returned by `showSaveFilePicker`.
-- On the next call, pass `startIn: lastFileHandle` so the dialog reopens in the same folder. Per the spec, a `FileSystemFileHandle` is a valid `startIn` value.
-- If no prior handle exists, `startIn` is omitted entirely (browser default).
-- The handle lives only in memory for the page session; this is intentional (handles can't be safely persisted to `localStorage` and re-acquiring permission across reloads needs a separate flow we're not adding here).
+No changes needed to `AssetTable.tsx`, `csv-export.ts`, or anywhere else.
 
-### 4. Fallback for unsupported browsers
-
-If `typeof window.showSaveFilePicker !== 'function'` (Firefox, Safari, older Chromium), fall back to the existing `Blob` + `URL.createObjectURL` + `<a>.click()` path unchanged. This preserves current behaviour everywhere it works today.
-
-### 5. Async signature + caller updates
-
-`exportCSV` becomes `async` and returns `Promise<void>`. The two call sites in `src/components/AssetViewer.tsx` (around lines ~2117 and ~2120) are fire-and-forget click handlers; they'll be updated to `void exportCSV(...)` so the floating promise is explicit and ESLint-clean. No `await` needed because errors are handled internally.
-
----
-
-### Technical details
-
-**TypeScript shim for File System Access API**
-
-The DOM lib types for `showSaveFilePicker` are only present in very recent `lib.dom.d.ts` versions and may not be in the project's TS target. To stay safe and keep `strict: true` happy without adding deps, we'll:
-
-- Cast via a narrow local type at the call site:
-  ```ts
-  type SaveFilePickerWindow = Window & {
-    showSaveFilePicker?: (opts: {
-      suggestedName?: string;
-      startIn?: FileSystemHandle;
-      types?: Array<{ description?: string; accept: Record<string, string[]> }>;
-    }) => Promise<FileSystemFileHandle>;
-  };
-  ```
-- Use `(window as SaveFilePickerWindow).showSaveFilePicker?.(…)`.
-- Type `lastFileHandle` as `FileSystemFileHandle | undefined` (this global type is widely available; if it isn't, alias it as `unknown` and cast at the boundary — decided at implementation time based on whether `tsc` complains).
-
-**Files touched**
-
-- `src/lib/csv-export.ts` — full rewrite of `exportCSV`, plus the module-level handle and a small `formatHistory(history)` helper.
-- `src/components/AssetViewer.tsx` — change two call sites from `exportCSV(...)` to `void exportCSV(...)`.
-
-**Not changed**
-
-- No new dependencies.
-- No UTF-8 BOM added (current file doesn't use one).
-- Column order before `Comments` is unchanged, so existing CSV consumers that read by position up to and including `Comments` keep working; only consumers that hard-code `Source file`'s index need to shift by one.
