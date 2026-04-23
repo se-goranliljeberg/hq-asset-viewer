@@ -40,6 +40,7 @@ const RELEASES: Release[] = [
       "Full / Replace All imports no longer trigger the cell highlight — the glow would otherwise cover every cell on a fresh load and carry no signal. Highlight is now scoped to incremental imports (Add / Enrich / conflict resolution) only.",
     ],
   },
+  {
     version: "0.4.2",
     date: "2026-04-22",
     title: "Leaver planning end-date column",
