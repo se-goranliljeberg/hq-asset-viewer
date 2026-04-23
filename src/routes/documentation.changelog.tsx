@@ -28,6 +28,19 @@ interface Release {
 
 const RELEASES: Release[] = [
   {
+    version: "0.4.3",
+    date: "2026-04-23",
+    title: "CSV export history, comment round-trip & smarter import highlight",
+    added: [
+      "CSV export now includes a 'Change History' column serialising each row's full lifecycle timeline (timestamp, initials, from → to state, user changes, notes) so audit history travels with the file.",
+      "Imported cells are briefly highlighted with a subtle blue glow after Add Data and Enrich Users imports, making it obvious which fields were just touched. The highlight clears itself after ~60 seconds.",
+    ],
+    fixed: [
+      "Comments column is now imported correctly: re-importing a previously exported file restores existing comments instead of dropping them, so comments round-trip cleanly.",
+      "Full / Replace All imports no longer trigger the cell highlight — the glow would otherwise cover every cell on a fresh load and carry no signal. Highlight is now scoped to incremental imports (Add / Enrich / conflict resolution) only.",
+    ],
+  },
+  {
     version: "0.4.2",
     date: "2026-04-22",
     title: "Leaver planning end-date column",
