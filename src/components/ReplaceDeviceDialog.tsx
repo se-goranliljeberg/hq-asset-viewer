@@ -112,7 +112,7 @@ export function ReplaceDeviceDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Replace Device</DialogTitle>
+          <DialogTitle>Assign Device</DialogTitle>
           <DialogDescription>
             {row ? (
               <>
@@ -260,7 +260,7 @@ export function ReplaceDeviceDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={handleSave} disabled={!canSave}>Replace</Button>
+          <Button onClick={handleSave} disabled={!canSave}>Assign Device</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
