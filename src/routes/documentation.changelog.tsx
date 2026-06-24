@@ -28,6 +28,90 @@ interface Release {
 
 const RELEASES: Release[] = [
   {
+    version: "0.5.0",
+    date: "2026-05-04",
+    title: "File-based restore points & Settings dialog",
+    added: [
+      "Settings dialog — a gear icon in the toolbar opens a Settings dialog with three sections: restore point storage location, restore point limits, and stale last-logon threshold.",
+      "File-based restore points — users can select a folder on disk (e.g. the folder containing index.html) as the backup location. Restore points are written as plain JSON files inside a restore-points/ sub-directory, making them portable and independent of browser storage.",
+      "Per-session folder handle persistence — the chosen folder's FileSystemDirectoryHandle is stored in a separate IndexedDB database (hq_asset_viewer_meta). On reload, access is re-established silently if permission is still granted; otherwise the Settings dialog shows a 'Re-grant access' button.",
+      "Restore point limits now configurable — max total restore points (default 20) and max save-workbook entries per day (default 3) can be changed in Settings and are persisted to localStorage.",
+      "Stale threshold moved to Settings — the stale last-logon threshold (days) is now configured in the Settings dialog instead of inline in the FilterBar, with the same localStorage persistence.",
+    ],
+    changed: [
+      "The Restore Points dialog retains its folder status bar for quick access, but the Select folder / Unlink folder controls are now also available in the Settings dialog.",
+      "pruneRestorePoints() now reads the configured limits from state instead of using hardcoded values.",
+    ],
+  },
+  {
+    version: "0.4.35",
+    date: "2026-05-04",
+    title: "TDZ crash fix for dispatchCommand",
+    fixed: [
+      "Runtime crash 'Cannot access before initialization' — dispatchCommand's useCallback referenced markDirty in both its body and dependency array, but markDirty was declared later in the component function body. The declaration order was corrected so markDirty is always initialized before dispatchCommand.",
+    ],
+  },
+  {
+    version: "0.4.34",
+    date: "2026-05-05",
+    title: "Phase 2 Hardening: command undo/redo, richer restore points, save conflict detection and multi-source save",
+    added: [
+      "Command-based undo/redo — each mutation (field edit, batch operation, import, clear) now dispatches a typed ViewerCommand. Undo/redo is precise and diff-based instead of full-state snapshots, reducing memory usage.",
+      "Restore point kind badges — restore points are now categorized (import-replace, import-add, import-enrich, save-workbook, replace-device, batch-status, clear-data, manual) with colored badges in the Restore Points dialog.",
+      "Restore points grouped by date — the Restore Points dialog now groups entries under calendar-day headings for easier navigation.",
+      "Smarter restore point pruning — import-replace entries are never auto-pruned; save-workbook entries are capped at 3 per calendar day; overall limit remains 20.",
+      "Save conflict detection — before overwriting a workbook, the app checks if the file was externally modified since the last save and prompts to overwrite or cancel.",
+      "Multi-source save — when data has been merged from multiple source workbooks, a 'Save each source' toolbar button appears and writes each workbook separately with only its own rows.",
+      "Field provenance tracking — new FieldProvenance metadata (importedAt, lastEditedAt, lastEditedBy, lastSavedAt) is stored per cell in localStorage for future audit use.",
+      "Versioned snapshot schema — localStorage snapshots now include a schema version field, enabling future migrations without data loss.",
+    ],
+    changed: [
+      "Undo/redo now uses the command layer instead of full-state snapshots. Redo is not supported for complex bulk operations (import, replace-device, clear); a toast notifies the user.",
+      "All restore point labels now include a kind prefix emoji for quick identification.",
+    ],
+  },
+  {
+    version: "0.4.33",
+    date: "2026-05-04",
+    title: "Undo / Redo, Save Workbook and durable Restore Points",
+    added: [
+      "Undo / Redo (Ctrl+Z / Ctrl+Y) — full-state snapshot undo/redo for all edits, batch operations and import actions, with up to 50 levels per session.",
+      "Save Workbook — patches the original Excel workbook (xlsx / xls) in place with all current edits and manual rows, then saves it back to disk via the File System Access API.",
+      "Save As — lets you save a patched copy of the workbook under a new filename; subsequent saves re-use that file handle.",
+      "Restore Points — durable, IndexedDB-backed backups created automatically before import operations, saves and clears. Browse and restore from the clock icon in the toolbar.",
+      "Dirty indicator — the Save button is highlighted whenever unsaved edits are present (shown as 'Save *').",
+      "Keyboard shortcut: Ctrl+Shift+Z also triggers Redo.",
+    ],
+    changed: [
+      "Manual rows added via the Add Row dialog are now stamped as 'manual' origin and will be appended to the workbook on save.",
+      "Import Add and Import Enrich operations now mark the workbook session as multi-source (disabling direct save) and create a durable restore point before modifying data.",
+    ],
+  },
+  {
+    version: "0.4.32",
+    date: "2026-04-29",
+    title: "Stable selection toolbar, compact KPIs and Computer OU naming",
+    changed: [
+      "Top KPI cards were made more compact (reduced spacing, icon size and text sizing) to improve information density.",
+      "The selected-row batch action toolbar is now always visible to prevent table layout jumps when rows are selected.",
+      "Selected-row toolbar controls were reordered for a more intentional action flow.",
+      "The OU column is now presented as 'Computer OU' in table labels and import-mapping/debugger UI.",
+    ],
+    fixed: [
+      "CSV export now writes the OU header as 'Computer OU' while preserving the same underlying OU field semantics.",
+      "Imports now recognize 'Computer OU' as an alias so exported files round-trip cleanly.",
+    ],
+  },
+  {
+    version: "0.4.31",
+    date: "2026-04-29",
+    title: "Documentation section link routing fix",
+    fixed: [
+      "Documentation table-of-contents section links no longer change the hash route and bounce back to the main app.",
+      "User Guide and Technical documentation now use in-page smooth scrolling for section navigation while keeping the current documentation route.",
+    ],
+  },
+  {
     version: "0.4.3",
     date: "2026-04-23",
     title: "CSV export history, comment round-trip & smarter import highlight",

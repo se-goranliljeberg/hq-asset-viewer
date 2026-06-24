@@ -61,7 +61,10 @@ export async function exportCSV(
     "Change History",
     "Source file",
   ];
-  const header = allCols.map(escape).join(",");
+  const header = allCols
+    .map((c) => (c === "OU" ? "Computer OU" : c))
+    .map(escape)
+    .join(",");
   const lines = rows.map((r) => {
     const cells = columns.map((c) => escape(r.raw[c] ?? ""));
     const e = edits[getEditKey(r.id)];

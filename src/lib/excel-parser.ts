@@ -1,5 +1,5 @@
 import * as XLSX from "xlsx";
-import type { AssetRow, AssetData } from "./asset-types";
+import type { AssetRow, AssetData, SourceOriginKind } from "./asset-types";
 import type { AssetEdits, AssetStatus, YesNo } from "./asset-edits";
 import { STATUS_OPTIONS } from "./asset-edits";
 
@@ -55,7 +55,7 @@ const ALIASES: Record<CanonicalField, string[]> = {
   Manager: ["manager", "reports to", "chef", "linemanager", "line manager", "supervisor"],
   "User Active?": ["user active", "useractive", "active", "enabled", "accountdisabled", "account disabled", "disabled", "is active", "isactive"],
   "Skanska computer?": ["skanska computer", "skanskacomputer", "skanska device", "company device", "corporate device", "company computer", "corporate computer"],
-  OU: ["ou", "organizational unit", "organisational unit", "organizationunit", "ad ou", "ad path", "distinguishedname", "distinguished name", "dn", "canonicalname", "canonical name"],
+  OU: ["ou", "computer ou", "organizational unit", "organisational unit", "organizationunit", "ad ou", "ad path", "distinguishedname", "distinguished name", "dn", "canonicalname", "canonical name"],
   "End date": ["end date", "enddate", "leaving date", "leaver date", "termination date", "offboarding date", "departure date", "last day", "last working day"],
 };
 
@@ -76,7 +76,7 @@ const FUZZY_SUBSTRINGS: Record<CanonicalField, string[]> = {
   Manager: ["manager", "supervisor"],
   "User Active?": ["active", "enabled", "disabled"],
   "Skanska computer?": ["skanska", "company device", "corporate device"],
-  OU: ["organizational unit", "organisational unit", "ou=", "distinguished", "canonicalname"],
+  OU: ["computer ou", "organizational unit", "organisational unit", "ou=", "distinguished", "canonicalname"],
   "End date": ["end date", "leaving date", "termination", "offboard", "departure date", "last day", "last working day"],
 };
 
@@ -264,12 +264,49 @@ export function headerSetHash(headers: string[]): string {
 
 // ---------- Parsing with explicit mapping ----------
 
+export interface WorkbookSeed {
+  workbookId: string;
+  filename: string;
+  sheetName: string;
+  fileType: "xlsx" | "xls" | "csv" | "unknown";
+  rowCount: number;
+  /** True when the file is xlsx/xls (rows have workbookRefs; direct save is possible). */
+  canDirectSave: boolean;
+}
+
 export interface ParseResult {
   data: AssetData;
   seedEdits: Record<string, AssetEdits>;
   isUsersFile: boolean;
   /** Per-row, per-field ISO timestamps recording when this value was imported. */
   importedAt: Record<number, Record<string, string>>;
+  /** Present when workbookContext was supplied; used to build WorkbookSessionMeta. */
+  workbookSeed?: WorkbookSeed;
+}
+
+// ─── Workbook context helpers ─────────────────────────────────────────────────
+
+export function detectWorkbookFileType(
+  filename: string,
+): "xlsx" | "xls" | "csv" | "unknown" {
+  const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+  if (ext === "xlsx" || ext === "xlsm" || ext === "xlam") return "xlsx";
+  if (ext === "xls" || ext === "xlt") return "xls";
+  if (ext === "csv" || ext === "tsv") return "csv";
+  return "unknown";
+}
+
+export function buildWorkbookId(
+  filename: string,
+  sheetName: string,
+  loadedAtIso: string,
+): string {
+  return `wb_${filename}_${sheetName}_${loadedAtIso}`.replace(/[^a-zA-Z0-9_.-]/g, "_");
+}
+
+export interface WorkbookContext {
+  workbookId: string;
+  fileType: "xlsx" | "xls" | "csv" | "unknown";
 }
 
 export function parseSheetWithMapping(
@@ -277,6 +314,7 @@ export function parseSheetWithMapping(
   sheetName: string,
   filename: string,
   mapping: Mapping,
+  workbookContext?: WorkbookContext,
 ): ParseResult {
   const wb = XLSX.read(buffer, { type: "array" });
   const ws = wb.Sheets[sheetName];
@@ -420,14 +458,39 @@ export function parseSheetWithMapping(
     // Inactive-user exception
     if (activeVal === "no") exceptions.push("Inactive user");
 
-    return { id: idx, computername, modell, user, raw, exceptions, sourceFile: filename };
+      const sourceOriginKind: SourceOriginKind = "imported";
+      const workbookRef = workbookContext
+        ? {
+            workbookId: workbookContext.workbookId,
+            sheetName,
+            rowNumber: idx + 2, // 1-based: row 1 = header, row 2 = first data row
+            sourceHeaders: Object.fromEntries(
+              Object.entries(fieldToHeader)
+                .filter(([, v]) => v !== undefined)
+                .map(([k, v]) => [k, v as string]),
+            ),
+          }
+        : undefined;
+      return { id: idx, computername, modell, user, raw, exceptions, sourceFile: filename, sourceOriginKind, workbookRef };
   });
+
+  const workbookSeed: WorkbookSeed | undefined = workbookContext
+    ? {
+        workbookId: workbookContext.workbookId,
+        filename,
+        sheetName,
+        fileType: workbookContext.fileType,
+        rowCount: rows.length,
+        canDirectSave: workbookContext.fileType === "xlsx" || workbookContext.fileType === "xls",
+      }
+    : undefined;
 
   return {
     data: { rows, columns: finalCols as string[], filename, loadedAt: new Date().toISOString() },
     seedEdits,
     isUsersFile,
     importedAt,
+    workbookSeed,
   };
 }
 
@@ -766,4 +829,71 @@ export function migrateLifecycle(data: AssetData): { data: AssetData; changed: b
     return { ...r, assetKind: r.computername.trim() ? ("computer" as const) : ("user-only" as const) };
   });
   return { data: changed ? { ...data, rows } : data, changed };
+}
+
+// ─── Multi-source / workbook-origin helpers ───────────────────────────────────
+
+/**
+ * Partition rows by their source workbook.
+ * Rows with a `workbookRef` are grouped by `workbookRef.workbookId`.
+ * Rows without a `workbookRef` (manual / generated) go under the key `"__manual__"`.
+ */
+export function splitRowsByWorkbookOrigin(rows: AssetRow[]): Map<string, AssetRow[]> {
+  const out = new Map<string, AssetRow[]>();
+  for (const row of rows) {
+    const key = row.workbookRef?.workbookId ?? "__manual__";
+    const bucket = out.get(key);
+    if (bucket) {
+      bucket.push(row);
+    } else {
+      out.set(key, [row]);
+    }
+  }
+  return out;
+}
+
+export interface SaveTargetValidation {
+  workbookId: string;
+  rows: AssetRow[];
+  eligible: boolean;
+  reason?: string;
+}
+
+/** Minimal session shape needed by validateSaveTargets — avoids circular import with workbook-session.ts. */
+interface SaveTargetSession {
+  fileType: "xlsx" | "xls" | "csv" | "unknown";
+  isMultiSource?: boolean;
+}
+
+/**
+ * Validate which workbook origins have a session and are eligible for save-back.
+ * Returns one entry per workbook origin found in `rows`.
+ */
+export function validateSaveTargets(
+  rows: AssetRow[],
+  sessions: Map<string, SaveTargetSession>,
+): SaveTargetValidation[] {
+  const byOrigin = splitRowsByWorkbookOrigin(rows);
+  const results: SaveTargetValidation[] = [];
+  for (const [workbookId, originRows] of byOrigin) {
+    if (workbookId === "__manual__") {
+      results.push({ workbookId, rows: originRows, eligible: false, reason: "Manual rows have no source workbook." });
+      continue;
+    }
+    const session = sessions.get(workbookId);
+    if (!session) {
+      results.push({ workbookId, rows: originRows, eligible: false, reason: "No session for this workbook." });
+      continue;
+    }
+    if (session.fileType !== "xlsx" && session.fileType !== "xls") {
+      results.push({ workbookId, rows: originRows, eligible: false, reason: "Only .xlsx / .xls files can be saved back." });
+      continue;
+    }
+    if (session.fileType === "csv") {
+      results.push({ workbookId, rows: originRows, eligible: false, reason: "CSV source — use Export CSV." });
+      continue;
+    }
+    results.push({ workbookId, rows: originRows, eligible: true });
+  }
+  return results;
 }

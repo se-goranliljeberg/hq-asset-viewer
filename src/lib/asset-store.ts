@@ -130,3 +130,51 @@ export function markLifecycleMigrated(): void {
     /* ignore */
   }
 }
+
+// ─── Versioned snapshots ──────────────────────────────────────────────────────
+
+export const SNAPSHOT_SCHEMA_VERSION = 1;
+
+const SCHEMA_VERSION_KEY = "hq_snapshot_schema_version";
+
+export function getSchemaVersion(): number {
+  try {
+    const raw = localStorage.getItem(SCHEMA_VERSION_KEY);
+    return raw ? Number(raw) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function setSchemaVersion(v: number): void {
+  try { localStorage.setItem(SCHEMA_VERSION_KEY, String(v)); } catch { /* ignore */ }
+}
+
+export interface VersionedSnapshot<T = unknown> {
+  version: number;
+  snapshot: T;
+}
+
+export function saveVersionedSnapshot<T>(key: string, snapshot: T): void {
+  try {
+    const versioned: VersionedSnapshot<T> = { version: SNAPSHOT_SCHEMA_VERSION, snapshot };
+    localStorage.setItem(key, JSON.stringify(versioned));
+  } catch { /* ignore */ }
+}
+
+export function loadVersionedSnapshot<T>(key: string): T | null {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    // Migrate old unversioned format: if the stored object lacks a `version`
+    // field it was written before versioned snapshots — return it as-is.
+    if (parsed && typeof parsed === "object" && "version" in parsed && "snapshot" in parsed) {
+      return (parsed as VersionedSnapshot<T>).snapshot;
+    }
+    // Legacy: the whole value is the snapshot.
+    return parsed as T;
+  } catch {
+    return null;
+  }
+}

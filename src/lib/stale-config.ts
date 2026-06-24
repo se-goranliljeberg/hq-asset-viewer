@@ -19,6 +19,35 @@ export function saveStaleThreshold(days: number): void {
   try { localStorage.setItem(STORAGE_KEY, String(Math.floor(days))); } catch { /* noop */ }
 }
 
+// ─── Restore-point limits ─────────────────────────────────────────────────────
+
+export const DEFAULT_MAX_RESTORE_POINTS = 20;
+export const DEFAULT_MAX_SAVE_WORKBOOK_PER_DAY = 3;
+
+function loadInt(key: string, defaultVal: number, min: number, max: number): number {
+  if (typeof window === "undefined") return defaultVal;
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return defaultVal;
+    const n = parseInt(raw, 10);
+    if (Number.isFinite(n) && n >= min && n <= max) return n;
+  } catch { /* noop */ }
+  return defaultVal;
+}
+
+function saveInt(key: string, val: number): void {
+  if (typeof window === "undefined") return;
+  try { localStorage.setItem(key, String(val)); } catch { /* noop */ }
+}
+
+export const loadMaxRestorePoints = () =>
+  loadInt("hq_max_restore_points", DEFAULT_MAX_RESTORE_POINTS, 1, 200);
+export const saveMaxRestorePoints = (n: number) => saveInt("hq_max_restore_points", n);
+
+export const loadMaxSaveWorkbookPerDay = () =>
+  loadInt("hq_max_save_workbook_per_day", DEFAULT_MAX_SAVE_WORKBOOK_PER_DAY, 1, 50);
+export const saveMaxSaveWorkbookPerDay = (n: number) => saveInt("hq_max_save_workbook_per_day", n);
+
 /**
  * Returns the integer number of days between today (UTC midnight) and the given
  * YYYY-MM-DD date string. Returns null if the input is empty/invalid.

@@ -83,7 +83,7 @@ export function KpiCards({ rows, edits, staleThreshold, activeCard, onCardClick 
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
+    <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
       {cards.map((c) => {
         const isActive = activeCard === c.key;
         const card = (
@@ -92,11 +92,11 @@ export function KpiCards({ rows, edits, staleThreshold, activeCard, onCardClick 
             className={`border-border/60 cursor-pointer transition-all hover:shadow-md ${isActive ? "ring-2 ring-primary shadow-md" : ""}`}
             onClick={() => onCardClick(c.key)}
           >
-            <CardContent className="flex items-center gap-4 p-5">
-              <c.icon className={`h-8 w-8 shrink-0 ${c.color}`} strokeWidth={1.5} />
+            <CardContent className="flex items-center gap-2.5 p-3">
+              <c.icon className={`h-6 w-6 shrink-0 ${c.color}`} strokeWidth={1.5} />
               <div>
-                <p className="text-2xl font-semibold tracking-tight">{c.value.toLocaleString()}</p>
-                <p className="text-xs text-muted-foreground">{c.label}</p>
+                <p className="text-xl font-semibold tracking-tight leading-none">{c.value.toLocaleString()}</p>
+                <p className="mt-1 text-[11px] text-muted-foreground leading-none">{c.label}</p>
               </div>
             </CardContent>
           </Card>

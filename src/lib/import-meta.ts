@@ -38,3 +38,50 @@ export function mergeImportMeta(base: ImportMeta, incoming: ImportMeta): ImportM
   }
   return out;
 }
+
+// ─── Field provenance ─────────────────────────────────────────────────────────
+
+/**
+ * Provenance record for a single (rowId, fieldName) pair.
+ * Records when it was last imported, edited, and who edited it.
+ */
+export interface FieldProvenance {
+  /** ISO timestamp when this field value was last imported from a source file. */
+  importedAt?: string;
+  /** ISO timestamp when this field value was last manually edited. */
+  lastEditedAt?: string;
+  /** Initials of the user who last edited this field value. */
+  lastEditedBy?: string;
+  /** ISO timestamp when this field value was last written to disk via workbook save. */
+  lastSavedAt?: string;
+}
+
+export type FieldProvenanceMeta = Record<number, Partial<Record<string, FieldProvenance>>>;
+
+const PROVENANCE_KEY = "hq_field_provenance";
+
+export function loadFieldProvenance(): FieldProvenanceMeta {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(PROVENANCE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") return parsed as FieldProvenanceMeta;
+  } catch { /* noop */ }
+  return {};
+}
+
+export function saveFieldProvenance(meta: FieldProvenanceMeta): void {
+  if (typeof window === "undefined") return;
+  try { localStorage.setItem(PROVENANCE_KEY, JSON.stringify(meta)); } catch { /* noop */ }
+}
+
+export function setFieldProvenance(
+  meta: FieldProvenanceMeta,
+  rowId: number,
+  field: string,
+  patch: Partial<FieldProvenance>,
+): void {
+  if (!meta[rowId]) meta[rowId] = {};
+  meta[rowId][field] = { ...(meta[rowId][field] ?? {}), ...patch };
+}

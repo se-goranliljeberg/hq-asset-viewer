@@ -17,6 +17,29 @@ export interface LifecycleEvent {
   note?: string;
 }
 
+// ─── Workbook provenance ───────────────────────────────────────────────────
+
+export type SourceOriginKind = "imported" | "manual" | "generated";
+
+export interface WorkbookRowRef {
+  workbookId: string;
+  sheetName: string;
+  /** 1-based Excel row number (row 1 = header, row 2 = first data row). */
+  rowNumber: number;
+  /** canonical field name → original worksheet column header */
+  sourceHeaders: Record<string, string>;
+}
+
+export interface WorkbookDatasetInfo {
+  workbookId: string;
+  filename: string;
+  sheetName: string;
+  fileType: "xlsx" | "xls" | "csv" | "unknown";
+  saveEligible: boolean;
+}
+
+// ─── Core row / dataset ────────────────────────────────────────────────────
+
 export interface AssetRow {
   id: number;
   computername: string;
@@ -35,6 +58,10 @@ export interface AssetRow {
   history?: LifecycleEvent[];
   /** Distinct usernames that have held this asset (most recent last). */
   previousUsers?: string[];
+  /** How this row entered the dataset. */
+  sourceOriginKind?: SourceOriginKind;
+  /** Reference back to the source workbook row, used for direct save-back. */
+  workbookRef?: WorkbookRowRef;
 }
 
 export interface AssetData {
@@ -42,6 +69,8 @@ export interface AssetData {
   columns: string[];
   filename: string;
   loadedAt: string;
+  /** Present when all rows came from a single xlsx/xls import. */
+  workbookInfo?: WorkbookDatasetInfo;
 }
 
 export type SortDir = "asc" | "desc" | null;

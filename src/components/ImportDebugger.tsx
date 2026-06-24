@@ -26,6 +26,8 @@ interface SheetReport {
 
 const DATE_HEADER_HINTS = ["date", "warranty", "created", "creation", "last logon", "last activity"];
 
+const canonicalLabel = (field: string) => (field === "OU" ? "Computer OU" : field);
+
 function isDateHeader(name: string): boolean {
   const n = name.toLowerCase();
   return DATE_HEADER_HINTS.some((h) => n.includes(h));
@@ -117,7 +119,7 @@ export function ImportDebugger({ open, onOpenChange }: Props) {
           fieldCounts.set(det.field, arr);
         }
         for (const [field, hs] of fieldCounts.entries()) {
-          if (hs.length > 1) warnings.push(`Conflict: ${hs.length} headers map to "${field}" (${hs.join(", ")})`);
+          if (hs.length > 1) warnings.push(`Conflict: ${hs.length} headers map to "${canonicalLabel(field)}" (${hs.join(", ")})`);
         }
         // Unmapped fields warning (informational)
         const unmapped = columns.filter((c) => mapping[c]?.field === "ignore");
@@ -232,7 +234,7 @@ export function ImportDebugger({ open, onOpenChange }: Props) {
                               <td className="px-3 py-1 font-medium">{c}</td>
                               <td className="px-3 py-1">
                                 {isCanonical ? (
-                                  <span className="font-mono">{field}</span>
+                                  <span className="font-mono">{canonicalLabel(field)}</span>
                                 ) : (
                                   <span className="text-muted-foreground italic">Ignore</span>
                                 )}

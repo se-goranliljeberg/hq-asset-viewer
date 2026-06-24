@@ -17,9 +17,37 @@ import {
   getSheetNames, parseSheetWithMapping, mergeData, enrichWithUsers,
   inspectSheet, headerSetHash, migrateToCanonical,
   detectUsernameConflicts,
+  detectWorkbookFileType, buildWorkbookId, splitRowsByWorkbookOrigin,
+  type WorkbookContext,
   type Mapping, type ParseResult, type UsernameConflict, type CanonicalField,
 } from "@/lib/excel-parser";
 import { exportCSV } from "@/lib/csv-export";
+import {
+  loadWorkbookSessionMeta, saveWorkbookSessionMeta, clearWorkbookSessionMeta,
+  loadWorkbookDirtyFlag, saveWorkbookDirtyFlag, clearWorkbookDirtyFlag,
+  canDirectSaveWorkbook,
+  type WorkbookSessionMeta,
+} from "@/lib/workbook-session";
+import {
+  buildViewerSnapshot,
+  type ViewerSnapshot,
+} from "@/lib/undo-redo";
+import {
+  pushCommand, applyCommandForward, applyCommandBackward,
+  type ViewerCommand, type CommandUndoRedoState,
+} from "@/lib/viewer-commands";
+import {
+  saveRestorePoint, listRestorePoints, loadRestorePoint,
+  deleteRestorePoint, pruneRestorePoints, buildRestorePointLabel, makeRestorePointId,
+  initRestorePointFolder, activateRestorePointFolder, deactivateRestorePointFolder,
+  getActiveRestorePointFolder, getStoredRestorePointFolderHandle, reRequestRestorePointFolderPermission,
+  type RestorePointSummary,
+} from "@/lib/restore-points";
+import { selectRestorePointsFolder } from "@/lib/restore-point-folder";
+import {
+  getWorkbookSaveEligibility, savePatchedWorkbook,
+} from "@/lib/workbook-save";
+import { RestorePointsDialog } from "./RestorePointsDialog";
 import { KpiCards } from "./KpiCards";
 import type { KpiKey } from "./KpiCards";
 import { FilterBar, STATUS_NONE_TOKEN, type SkanskaFilter } from "./FilterBar";
@@ -38,7 +66,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Upload, Trash2, Download, ShieldCheck, RefreshCw, Plus, Bug, BookOpen } from "lucide-react";
+import { Upload, Trash2, Download, ShieldCheck, RefreshCw, Plus, Bug, BookOpen, Save, Undo2, Redo2, History, Settings } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { AddRowDialog } from "./AddRowDialog";
 import { ReplaceDeviceDialog, type ReplaceSource, type OldDeviceDestination } from "./ReplaceDeviceDialog";
@@ -55,7 +83,12 @@ import { UserHistoryView } from "./UserHistoryView";
 import { APP_VERSION, useHasUnseenVersion } from "@/lib/version-state";
 import { loadImportMeta, saveImportMeta, mergeImportMeta, type ImportMeta } from "@/lib/import-meta";
 import { ImportConflictDialog, type ConflictResolutions } from "./ImportConflictDialog";
-import { loadStaleThreshold, saveStaleThreshold, DEFAULT_STALE_THRESHOLD_DAYS } from "@/lib/stale-config";
+import {
+  loadStaleThreshold, saveStaleThreshold,
+  loadMaxRestorePoints, saveMaxRestorePoints,
+  loadMaxSaveWorkbookPerDay, saveMaxSaveWorkbookPerDay,
+} from "@/lib/stale-config";
+import { SettingsDialog, type SettingsValues } from "./SettingsDialog";
 import { effectiveSkanska, effectiveUserActive, effectiveExceptions, recordLifecycleEvent, computeMultiComputerUsers } from "@/lib/asset-edits";
 import type { AssetRow as _AssetRow, LifecycleState } from "@/lib/asset-types";
 import { detectUserMultiAssetIncoming, type MultiAssetIncoming, migrateLifecycle } from "@/lib/excel-parser";
@@ -166,6 +199,31 @@ export function AssetViewer() {
   const editsRef = useRef<Record<string, AssetEdits>>({});
   const legacyRowEndDatesRef = useRef<Record<string, string>>({});
   const [importMeta, setImportMeta] = useState<ImportMeta>({});
+
+  // ─── Workbook session / undo / restore state ────────────────────────────────
+  const [workbookSessionMeta, setWorkbookSessionMeta] = useState<WorkbookSessionMeta | null>(
+    () => loadWorkbookSessionMeta(),
+  );
+  const [isDirty, setIsDirty] = useState<boolean>(() => loadWorkbookDirtyFlag());
+  const [commandUndoRedo, setCommandUndoRedo] = useState<CommandUndoRedoState>({ undoStack: [], redoStack: [] });
+  const [restorePointsOpen, setRestorePointsOpen] = useState(false);
+  const [restorePointItems, setRestorePointItems] = useState<RestorePointSummary[]>([]);
+  /** Name of the active restore-point folder (undefined = IndexedDB). */
+  const [restorePointFolderName, setRestorePointFolderName] = useState<string | undefined>(undefined);
+  /** True when a folder handle is stored but permission has lapsed. */
+  const [restorePointFolderNeedsPermission, setRestorePointFolderNeedsPermission] = useState(false);
+
+  const workbookBufferRef = useRef<ArrayBuffer | null>(null);
+  const workbookHandleRef = useRef<FileSystemFileHandle | null>(null);
+  /** Per-workbookId buffers for multi-source sessions. */
+  const workbookBuffersRef = useRef<Map<string, ArrayBuffer>>(new Map());
+  /** Per-workbookId handles for multi-source sessions. */
+  const workbookHandlesRef = useRef<Map<string, FileSystemFileHandle>>(new Map());
+  const workbookSessionMetaRef = useRef<WorkbookSessionMeta | null>(null);
+  const isDirtyRef = useRef(false);
+  const userEditsRef = useRef<Record<string, string>>({});
+  const importMetaRef = useRef<ImportMeta>({});
+  // ────────────────────────────────────────────────────────────────────────────
   // Timestamp (ms) of the most recent import action. Cells whose import meta
   // is at or after this value get a transient highlight in the table.
   const [lastImportAt, setLastImportAt] = useState<number | null>(null);
@@ -173,6 +231,25 @@ export function AssetViewer() {
   useEffect(() => { setImportMeta(loadImportMeta()); }, []);
   useEffect(() => { dataRef.current = data; }, [data]);
   useEffect(() => { editsRef.current = edits; }, [edits]);
+  useEffect(() => { workbookSessionMetaRef.current = workbookSessionMeta; }, [workbookSessionMeta]);
+  useEffect(() => { isDirtyRef.current = isDirty; }, [isDirty]);
+  useEffect(() => { userEditsRef.current = userEdits; }, [userEdits]);
+  useEffect(() => { importMetaRef.current = importMeta; }, [importMeta]);
+
+  // Restore the previously selected restore-point folder (no user prompt).
+  useEffect(() => {
+    initRestorePointFolder().then(async () => {
+      const active = getActiveRestorePointFolder();
+      if (active) {
+        setRestorePointFolderName(active.name);
+        setRestorePointFolderNeedsPermission(false);
+      } else {
+        const stored = await getStoredRestorePointFolderHandle();
+        if (stored) setRestorePointFolderNeedsPermission(true);
+      }
+    }).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Auto-clear the import highlight after 60 seconds so it doesn't linger.
   useEffect(() => {
@@ -222,6 +299,9 @@ export function AssetViewer() {
     return "all";
   });
   const [staleThreshold, setStaleThresholdState] = useState<number>(() => loadStaleThreshold());
+  const [maxRestorePoints, setMaxRestorePointsState] = useState<number>(() => loadMaxRestorePoints());
+  const [maxSaveWorkbookPerDay, setMaxSaveWorkbookPerDayState] = useState<number>(() => loadMaxSaveWorkbookPerDay());
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Persist filter selections so they survive reloads.
   useEffect(() => { saveFilterToStorage(FILTER_STORAGE_KEYS.models, modelFilter); }, [modelFilter]);
@@ -239,11 +319,21 @@ export function AssetViewer() {
     setStaleThresholdState(n);
     saveStaleThreshold(n);
   }, []);
+
+  const handleSettingsSave = useCallback((next: SettingsValues) => {
+    setStaleThresholdState(next.staleThresholdDays);
+    saveStaleThreshold(next.staleThresholdDays);
+    setMaxRestorePointsState(next.maxRestorePoints);
+    saveMaxRestorePoints(next.maxRestorePoints);
+    setMaxSaveWorkbookPerDayState(next.maxSaveWorkbookPerDay);
+    saveMaxSaveWorkbookPerDay(next.maxSaveWorkbookPerDay);
+  }, []);
   const [exceptionsOnly, setExceptionsOnly] = useState(false);
   const [activeCard, setActiveCard] = useState<KpiKey | null>(null);
   const [sort, setSort] = useState<SortState>({ column: "", dir: null });
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [confirmClear, setConfirmClear] = useState(false);
+  const [saveConflict, setSaveConflict] = useState<{ externalModifiedAt: string; mode: "save" | "saveAs" } | null>(null);
   const [sheetPickerOpen, setSheetPickerOpen] = useState(false);
   const [pendingSheets, setPendingSheets] = useState<string[]>([]);
   const [importModeOpen, setImportModeOpen] = useState(false);
@@ -282,6 +372,7 @@ export function AssetViewer() {
   const pendingBuffer = useRef<ArrayBuffer | null>(null);
   const pendingFilename = useRef("");
   const pendingSheet = useRef("");
+  const pendingFileModified = useRef<number | undefined>(undefined);
   const pendingParsed = useRef<AssetData | null>(null);
   const pendingSeedEdits = useRef<Record<string, AssetEdits>>({});
   const pendingImportedAt = useRef<Record<number, Record<string, string>>>({});
@@ -412,9 +503,404 @@ export function AssetViewer() {
     }
   }, [hydrated, data, setDataDirect]);
 
+  // ─── Undo / redo / restore-point helpers ────────────────────────────────────
+
+  const captureCurrentSnapshot = useCallback(
+    (label: string): ViewerSnapshot =>
+      buildViewerSnapshot({
+        label,
+        data: dataRef.current,
+        edits: editsRef.current,
+        userEdits: userEditsRef.current,
+        importMeta: importMetaRef.current,
+        workbookSessionMeta: workbookSessionMetaRef.current,
+        dirty: isDirtyRef.current,
+      }),
+    [],
+  );
+
+  // ─── Command-based undo/redo ────────────────────────────────────────────────
+
+  /**
+   * Helper: apply a StatePatches object (possibly with an embedded snapshot)
+   * to React state + localStorage. Used by both undo and redo.
+   */
+  const applyPatches = useCallback(
+    (patches: ReturnType<typeof applyCommandBackward>, dirtyOverride?: boolean) => {
+      const snap = (patches as { snapshot?: ViewerSnapshot }).snapshot;
+      if (snap) {
+        // Full snapshot restore (complex command backward or batchStatus with splits).
+        if (snap.data) {
+          setData(snap.data);
+        } else {
+          clearData();
+          setDataDirect(null);
+        }
+        setEditsState(snap.edits);
+        saveEdits(snap.edits);
+        setUserEdits(snap.userEdits);
+        saveUserEdits(snap.userEdits);
+        setImportMeta(snap.importMeta);
+        saveImportMeta(snap.importMeta);
+        setWorkbookSessionMeta(snap.workbookSessionMeta);
+        if (snap.workbookSessionMeta) saveWorkbookSessionMeta(snap.workbookSessionMeta);
+        else clearWorkbookSessionMeta();
+        const dirty = dirtyOverride ?? snap.dirty;
+        isDirtyRef.current = dirty;
+        setIsDirty(dirty);
+        saveWorkbookDirtyFlag(dirty);
+        return;
+      }
+      if (patches.data !== undefined) {
+        if (patches.data) {
+          setData(patches.data);
+        } else {
+          clearData();
+          setDataDirect(null);
+        }
+      }
+      if (patches.edits !== undefined) {
+        setEditsState(patches.edits);
+        saveEdits(patches.edits);
+      }
+      if (patches.userEdits !== undefined) {
+        setUserEdits(patches.userEdits);
+        saveUserEdits(patches.userEdits);
+      }
+    },
+    [setData, setDataDirect, setImportMeta, setWorkbookSessionMeta],
+  );
+
+  const markDirty = useCallback(() => {
+    if (!isDirtyRef.current) {
+      isDirtyRef.current = true;
+      setIsDirty(true);
+      saveWorkbookDirtyFlag(true);
+    }
+  }, []);
+
+  /**
+   * Dispatch a command: push to undo stack and mark dirty.
+   * The caller has already applied the mutation to React state.
+   */
+  const dispatchCommand = useCallback(
+    (cmd: ViewerCommand) => {
+      setCommandUndoRedo((prev) => pushCommand(prev, cmd));
+      markDirty();
+    },
+    [markDirty],
+  );
+
+  const handleUndo = useCallback(() => {
+    setCommandUndoRedo((prevCmd) => {
+      if (prevCmd.undoStack.length === 0) {
+        toast.info("Nothing to undo.");
+        return prevCmd;
+      }
+      const undoStack = [...prevCmd.undoStack];
+      const cmd = undoStack.pop()!;
+      const redoStack = [...prevCmd.redoStack, cmd];
+      const liveDatas = {
+        data: dataRef.current,
+        edits: editsRef.current,
+        userEdits: userEditsRef.current,
+      };
+      const patches = applyCommandBackward(liveDatas, cmd);
+      applyPatches(patches, true);
+      const cmdLabel = cmd.type.replace(/([A-Z])/g, " $1").toLowerCase();
+      toast.success(`Undo: ${cmdLabel}`);
+      return { undoStack, redoStack };
+    });
+  }, [applyPatches]);
+
+  const handleRedo = useCallback(() => {
+    setCommandUndoRedo((prevCmd) => {
+      if (prevCmd.redoStack.length === 0) {
+        toast.info("Nothing to redo.");
+        return prevCmd;
+      }
+      const redoStack = [...prevCmd.redoStack];
+      const cmd = redoStack.pop()!;
+      // Complex commands that don't support redo.
+      if (cmd.type === "replaceDevice" || cmd.type === "importMerge" || cmd.type === "clearData" ||
+          (cmd.type === "batchStatus" && cmd.splitCount > 0)) {
+        toast.info("Redo not available for this operation.");
+        return prevCmd;
+      }
+      const undoStack = [...prevCmd.undoStack, cmd];
+      const liveDatas = {
+        data: dataRef.current,
+        edits: editsRef.current,
+        userEdits: userEditsRef.current,
+      };
+      const patches = applyCommandForward(liveDatas, cmd);
+      applyPatches(patches, true);
+      const cmdLabel = cmd.type.replace(/([A-Z])/g, " $1").toLowerCase();
+      toast.success(`Redo: ${cmdLabel}`);
+      return { undoStack, redoStack };
+    });
+  }, [applyPatches]);
+
+  // ───────────────────────────────────────────────────────────────────────────
+
+  const markSaved = useCallback(
+    (savedAtIso: string, filename?: string, fileModifiedAt?: number) => {
+      isDirtyRef.current = false;
+      setIsDirty(false);
+      saveWorkbookDirtyFlag(false);
+      setWorkbookSessionMeta((prev) => {
+        if (!prev) return prev;
+        const next = {
+          ...prev,
+          lastSavedAt: savedAtIso,
+          ...(fileModifiedAt != null ? { lastKnownFileModified: fileModifiedAt } : {}),
+          ...(filename ? { lastSavedAsFilename: filename } : {}),
+        };
+        saveWorkbookSessionMeta(next);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const createDurableRestorePoint = useCallback(
+    async (label: string, kind: import("@/lib/restore-points").RestorePointKind = "manual") => {
+      try {
+        const record = {
+          id: makeRestorePointId(),
+          createdAt: new Date().toISOString(),
+          label,
+          kind,
+          snapshot: captureCurrentSnapshot(label),
+        };
+        await saveRestorePoint(record);
+        await pruneRestorePoints(maxRestorePoints, maxSaveWorkbookPerDay);
+      } catch {
+        // Non-fatal — best effort.
+      }
+    },
+    [captureCurrentSnapshot, maxRestorePoints, maxSaveWorkbookPerDay],
+  );
+
+  const handleSaveWorkbook = useCallback(async () => {
+    if (!data || !workbookBufferRef.current || !workbookSessionMeta) {
+      toast.error("No workbook session active.");
+      return;
+    }
+    const eligibility = getWorkbookSaveEligibility(data, workbookSessionMeta);
+    if (!eligibility.allowed) {
+      toast.error(eligibility.reason ?? "Cannot save workbook.");
+      return;
+    }
+    await createDurableRestorePoint(
+      buildRestorePointLabel("Save workbook", workbookSessionMeta.filename),
+      "save-workbook",
+    );
+    try {
+      const saveResult = await savePatchedWorkbook(
+        workbookBufferRef.current,
+        { rows: data.rows, columns: data.columns, edits, userEdits },
+        workbookSessionMeta,
+        workbookHandleRef.current ?? undefined,
+      );
+      if ("conflict" in saveResult) {
+        setSaveConflict({ externalModifiedAt: saveResult.externalModifiedAt, mode: "save" });
+        return;
+      }
+      const { result, handle } = saveResult;
+      if (handle) workbookHandleRef.current = handle;
+      markSaved(result.savedAt, result.filename, result.fileModifiedAt);
+      toast.success(
+        `Saved "${result.filename}" — ${result.updatedRowCount} rows updated` +
+        (result.appendedRowCount > 0 ? `, ${result.appendedRowCount} appended` : "") +
+        (result.createdColumns.length > 0 ? ` (added columns: ${result.createdColumns.join(", ")})` : ""),
+      );
+    } catch (err) {
+      if ((err as { name?: string })?.name === "AbortError") return;
+      toast.error(`Save failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }, [data, workbookSessionMeta, edits, userEdits, createDurableRestorePoint, markSaved]);
+
+  const handleSaveWorkbookAs = useCallback(async () => {
+    if (!data || !workbookBufferRef.current || !workbookSessionMeta) {
+      toast.error("No workbook session active.");
+      return;
+    }
+    await createDurableRestorePoint(
+      buildRestorePointLabel("Save workbook as", workbookSessionMeta.filename),
+      "save-workbook",
+    );
+    try {
+      // Force the picker by passing a session copy with canDirectSave = false.
+      const saveResult = await savePatchedWorkbook(
+        workbookBufferRef.current,
+        { rows: data.rows, columns: data.columns, edits, userEdits },
+        { ...workbookSessionMeta, canDirectSave: false },
+        undefined,
+      );
+      if ("conflict" in saveResult) {
+        setSaveConflict({ externalModifiedAt: saveResult.externalModifiedAt, mode: "saveAs" });
+        return;
+      }
+      const { result, handle } = saveResult;
+      if (handle) workbookHandleRef.current = handle;
+      markSaved(result.savedAt, result.filename, result.fileModifiedAt);
+      setWorkbookSessionMeta((prev) => {
+        if (!prev) return prev;
+        const next = { ...prev, filename: result.filename, canDirectSave: true };
+        saveWorkbookSessionMeta(next);
+        return next;
+      });
+      toast.success(`Saved as "${result.filename}"`);
+    } catch (err) {
+      if ((err as { name?: string })?.name === "AbortError") return;
+      toast.error(`Save As failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }, [data, workbookSessionMeta, edits, userEdits, createDurableRestorePoint, markSaved]);
+
+  /**
+   * Multi-source save: for each workbook origin, patch and write back the
+   * corresponding source workbook.  Each workbook only receives the rows that
+   * originated from it (plus any manual rows in the first workbook).
+   */
+  const handleSaveEachWorkbook = useCallback(async () => {
+    if (!data || !workbookSessionMeta) {
+      toast.error("No workbook session active.");
+      return;
+    }
+    const byWorkbook = splitRowsByWorkbookOrigin(data.rows);
+    const workbookIds = [...byWorkbook.keys()].filter((id) => id !== "__manual__");
+    if (workbookIds.length === 0) {
+      toast.error("No multi-source workbook data found.");
+      return;
+    }
+    let savedCount = 0;
+    for (const wbId of workbookIds) {
+      const buffer = workbookBuffersRef.current.get(wbId);
+      if (!buffer) {
+        toast.warning(`No buffer for workbook ${wbId} — skipping.`);
+        continue;
+      }
+      const rows = [
+        ...(byWorkbook.get(wbId) ?? []),
+        // Attach manual rows to the first workbook.
+        ...(wbId === workbookIds[0] ? (byWorkbook.get("__manual__") ?? []) : []),
+      ];
+      const sessionForWb = { ...workbookSessionMeta, canDirectSave: false, isMultiSource: false };
+      try {
+        const saveResult = await savePatchedWorkbook(
+          buffer,
+          { rows, columns: data.columns, edits, userEdits },
+          sessionForWb,
+          workbookHandlesRef.current.get(wbId),
+        );
+        if (!("conflict" in saveResult)) {
+          const { result, handle } = saveResult;
+          if (handle) workbookHandlesRef.current.set(wbId, handle);
+          savedCount++;
+          toast.success(`Saved "${result.filename}" — ${result.updatedRowCount} rows`);
+        }
+      } catch (err) {
+        if ((err as { name?: string })?.name !== "AbortError") {
+          toast.error(`Save failed for workbook ${wbId}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+    }
+    if (savedCount === workbookIds.length) {
+      markSaved(new Date().toISOString());
+    }
+  }, [data, workbookSessionMeta, edits, userEdits, markSaved]);
+
+  const handleOpenRestorePoints = useCallback(async () => {
+    try {
+      const items = await listRestorePoints();
+      setRestorePointItems(items);
+      setRestorePointsOpen(true);
+    } catch {
+      toast.error("Could not load restore points.");
+    }
+  }, []);
+
+  const handleRestorePointApply = useCallback(
+    async (id: string) => {
+      try {
+        const record = await loadRestorePoint(id);
+        if (!record) { toast.error("Restore point not found."); return; }
+        // Push a "before restore" command so the user can undo the restore.
+        const preSnap = captureCurrentSnapshot("Before restore");
+        dispatchCommand({ type: "clearData", preSnapshot: preSnap });
+        const snapshot = record.snapshot;
+        if (snapshot.data) {
+          setData(snapshot.data);
+        } else {
+          clearData();
+          setDataDirect(null);
+        }
+        setEditsState(snapshot.edits);
+        saveEdits(snapshot.edits);
+        setUserEdits(snapshot.userEdits);
+        saveUserEdits(snapshot.userEdits);
+        setImportMeta(snapshot.importMeta);
+        saveImportMeta(snapshot.importMeta);
+        setWorkbookSessionMeta(snapshot.workbookSessionMeta);
+        if (snapshot.workbookSessionMeta) saveWorkbookSessionMeta(snapshot.workbookSessionMeta);
+        else clearWorkbookSessionMeta();
+        isDirtyRef.current = true;
+        setIsDirty(true);
+        saveWorkbookDirtyFlag(true);
+        setRestorePointsOpen(false);
+        toast.success(`Restored: ${record.label}`);
+      } catch {
+        toast.error("Failed to restore backup.");
+      }
+    },
+    [captureCurrentSnapshot, dispatchCommand, setData, setDataDirect],
+  );
+
+  const handleDeleteRestorePoint = useCallback(async (id: string) => {
+    try {
+      await deleteRestorePoint(id);
+      setRestorePointItems((prev) => prev.filter((rp) => rp.id !== id));
+    } catch {
+      toast.error("Could not delete restore point.");
+    }
+  }, []);
+
+  const handleSelectRestorePointFolder = useCallback(async () => {
+    const handle = await selectRestorePointsFolder();
+    if (!handle) return; // user cancelled
+    await activateRestorePointFolder(handle);
+    setRestorePointFolderName(handle.name);
+    setRestorePointFolderNeedsPermission(false);
+    toast.success(`Restore points will be saved to "${handle.name}/restore-points".`);
+  }, []);
+
+  const handleClearRestorePointFolder = useCallback(async () => {
+    await deactivateRestorePointFolder();
+    setRestorePointFolderName(undefined);
+    setRestorePointFolderNeedsPermission(false);
+    toast.info("Restore points will now use browser storage.");
+  }, []);
+
+  const handleReRequestRestorePointPermission = useCallback(async () => {
+    const ok = await reRequestRestorePointFolderPermission();
+    if (ok) {
+      const active = getActiveRestorePointFolder();
+      setRestorePointFolderName(active?.name);
+      setRestorePointFolderNeedsPermission(false);
+      toast.success("Folder access restored.");
+    } else {
+      toast.error("Permission was not granted.");
+    }
+  }, []);
+
+  // ────────────────────────────────────────────────────────────────────────────
+
   const performEdit = useCallback((rowId: number, field: keyof AssetEdits, value: string) => {
+    const key = getEditKey(rowId);
+    const currentEdits = editsRef.current;
+    const beforeEdits: AssetEdits = currentEdits[key] ?? { status: "", warrantyUntil: "" };
     setEditsState((prev) => {
-      const key = getEditKey(rowId);
       const current = prev[key] ?? { status: "", warrantyUntil: "" };
       const updated: AssetEdits = { ...current, [field]: value };
       if (field !== "comment" && (current[field] ?? "") !== value) {
@@ -428,10 +914,23 @@ export function AssetViewer() {
         );
       }
       const next = { ...prev, [key]: updated };
+      // Build and dispatch command AFTER computing afterEdits.
+      if (field !== "comment") {
+        dispatchCommand({
+          type: "editField",
+          rowId,
+          editKey: key,
+          field,
+          beforeEdits,
+          afterEdits: updated,
+        });
+      } else {
+        markDirty();
+      }
       saveEdits(next);
       return next;
     });
-  }, []);
+  }, [dispatchCommand, markDirty]);
 
   /**
    * Split a row when its Status is moved to "In stock" or "Sent back to broker":
@@ -561,6 +1060,8 @@ export function AssetViewer() {
   const handleUserEdit = useCallback((username: string, endDate: string) => {
     const key = username.trim().toLowerCase();
     if (!key) return;
+    const oldValue = userEditsRef.current[key] ?? "";
+    dispatchCommand({ type: "editUserDate", username: key, oldValue, newValue: endDate });
     setUserEdits((prev) => {
       const next = { ...prev };
       if (endDate) next[key] = endDate;
@@ -568,7 +1069,7 @@ export function AssetViewer() {
       saveUserEdits(next);
       return next;
     });
-  }, []);
+  }, [dispatchCommand]);
 
   /**
    * Apply a batch edit to all currently selected rows.
@@ -584,6 +1085,8 @@ export function AssetViewer() {
     ) => {
       if (ids.size === 0) return;
       ensureInitials(() => {
+        const currentEdits = editsRef.current;
+        const perRowDiffs: Array<{ editKey: string; beforeEdits: AssetEdits; afterEdits: AssetEdits }> = [];
         setEditsState((prev) => {
           const next = { ...prev };
           let changed = 0;
@@ -591,10 +1094,12 @@ export function AssetViewer() {
             const key = getEditKey(id);
             const current = next[key] ?? { status: "" as AssetStatus, warrantyUntil: "" };
             if (kind === "comment") {
-              next[key] = {
+              const after: AssetEdits = {
                 ...current,
                 comment: appendComment(current.comment, `[note] ${value} (batch)`),
               };
+              perRowDiffs.push({ editKey: key, beforeEdits: currentEdits[key] ?? { status: "", warrantyUntil: "" }, afterEdits: after });
+              next[key] = after;
               changed += 1;
               continue;
             }
@@ -602,7 +1107,7 @@ export function AssetViewer() {
             const before = current[kind] ?? "";
             const after = value as YesNo;
             if (before === after) continue;
-            next[key] = {
+            const afterEdits: AssetEdits = {
               ...current,
               [kind]: after,
               comment: appendComment(
@@ -610,9 +1115,16 @@ export function AssetViewer() {
                 `${describeChange(fieldLabel, before, after)} (batch)`,
               ),
             };
+            perRowDiffs.push({ editKey: key, beforeEdits: currentEdits[key] ?? { status: "", warrantyUntil: "" }, afterEdits });
+            next[key] = afterEdits;
             changed += 1;
           }
           saveEdits(next);
+          if (perRowDiffs.length > 0) {
+            dispatchCommand({ type: "batchEdit", kind, perRowDiffs });
+          } else {
+            markDirty();
+          }
           if (kind === "comment") {
             toast.success(`Added comment to ${changed} row${changed === 1 ? "" : "s"}`);
           } else {
@@ -624,7 +1136,7 @@ export function AssetViewer() {
         });
       });
     },
-    [ensureInitials],
+    [ensureInitials, dispatchCommand, markDirty],
   );
 
   const getBatchStatusSplitCount = useCallback(
@@ -645,6 +1157,7 @@ export function AssetViewer() {
   const applyBatchStatusChange = useCallback((ids: Set<number>, statusVal: AssetStatus) => {
     if (ids.size === 0) return;
     ensureInitials(() => {
+      const preSnapshot = captureCurrentSnapshot(`Batch status → ${statusVal}`);
       const currentData = dataRef.current;
       const currentEdits = editsRef.current;
       if (!currentData) return;
@@ -657,6 +1170,7 @@ export function AssetViewer() {
       let changed = 0;
       const nextRows = [...currentData.rows];
       const nextEdits: Record<string, AssetEdits> = { ...currentEdits };
+      const perRowEdits: Array<{ editKey: string; beforeEdits: AssetEdits; afterEdits: AssetEdits }> = [];
 
       for (const id of ids) {
         const rowIdx = nextRows.findIndex((r) => r.id === id);
@@ -726,7 +1240,7 @@ export function AssetViewer() {
         }
 
         if (current.status === statusVal) continue;
-        nextEdits[key] = {
+        const afterEdits: AssetEdits = {
           ...current,
           status: statusVal,
           comment: appendComment(
@@ -734,6 +1248,8 @@ export function AssetViewer() {
             `${describeChange("Status", current.status, statusVal)} (batch)`,
           ),
         };
+        perRowEdits.push({ editKey: key, beforeEdits: currentEdits[key] ?? { status: "", warrantyUntil: "" }, afterEdits });
+        nextEdits[key] = afterEdits;
         changed += 1;
       }
 
@@ -744,6 +1260,14 @@ export function AssetViewer() {
       saveEdits(nextEdits);
       setEditsState(nextEdits);
 
+      dispatchCommand({
+        type: "batchStatus",
+        statusVal,
+        splitCount,
+        preSnapshot,
+        perRowEdits: splitCount === 0 ? perRowEdits : undefined,
+      });
+
       if (splitCount > 0) {
         toast.success(
           `Updated status for ${changed} row${changed === 1 ? "" : "s"} (${splitCount} split)`,
@@ -752,14 +1276,18 @@ export function AssetViewer() {
         toast.success(`Updated status for ${changed} row${changed === 1 ? "" : "s"}`);
       }
     });
-  }, [ensureInitials, setData]);
+  }, [ensureInitials, setData, captureCurrentSnapshot, dispatchCommand]);
 
   const performCellEdit = useCallback((rowId: number, column: string, value: string) => {
     if (!data) return;
     let prevValue = "";
+    let beforeRow: Pick<AssetRow, "id" | "computername" | "modell" | "user" | "raw"> | null = null;
+    const key = getEditKey(rowId);
+    const beforeEdits: AssetEdits | null = editsRef.current[key] ?? null;
     const updatedRows = data.rows.map((r) => {
       if (r.id !== rowId) return r;
       prevValue = r.raw[column] ?? "";
+      beforeRow = { id: r.id, computername: r.computername, modell: r.modell, user: r.user, raw: { ...r.raw } };
       const newRaw = { ...r.raw, [column]: value };
       const colLower = column.toLowerCase();
       return {
@@ -770,23 +1298,39 @@ export function AssetViewer() {
         user: colLower === "user" ? value.trim() : r.user,
       };
     });
-    setData({ ...data, rows: updatedRows });
+    const newData = { ...data, rows: updatedRows };
+    setData(newData);
+    let afterEdits: AssetEdits | null = null;
     if (prevValue !== value) {
       setEditsState((prev) => {
-        const key = getEditKey(rowId);
         const current = prev[key] ?? { status: "", warrantyUntil: "" };
-        const next = {
-          ...prev,
-          [key]: {
-            ...current,
-            comment: appendComment(current.comment, describeChange(column, prevValue, value)),
-          },
+        const updated: AssetEdits = {
+          ...current,
+          comment: appendComment(current.comment, describeChange(column, prevValue, value)),
         };
+        afterEdits = updated;
+        const next = { ...prev, [key]: updated };
         saveEdits(next);
         return next;
       });
     }
-  }, [data, setData]);
+    if (beforeRow) {
+      // Find the afterRow from the updated data.
+      const targetRow = newData.rows.find((r) => r.id === rowId);
+      if (targetRow) {
+        const afterRow = { id: targetRow.id, computername: targetRow.computername, modell: targetRow.modell, user: targetRow.user, raw: { ...targetRow.raw } };
+        dispatchCommand({
+          type: "editCell",
+          rowId,
+          column,
+          beforeRow,
+          afterRow,
+          beforeEdits,
+          afterEdits,
+        });
+      }
+    }
+  }, [data, setData, dispatchCommand]);
 
   const handleCellEdit = useCallback((rowId: number, column: string, value: string) => {
     ensureInitials(() => performCellEdit(rowId, column, value));
@@ -926,6 +1470,28 @@ export function AssetViewer() {
       const meta: ImportMeta = {};
       for (const [k, v] of Object.entries(result.importedAt)) meta[Number(k)] = { ...v };
       mergeAndPersistMeta(meta, { highlight: false });
+      // Set workbook session for xlsx/xls direct-save.
+      if (result.workbookSeed?.canDirectSave) {
+        const seed = result.workbookSeed;
+        const session: WorkbookSessionMeta = {
+          workbookId: seed.workbookId,
+          filename: seed.filename,
+          sheetName: seed.sheetName,
+          fileType: seed.fileType,
+          mapping: {},
+          loadedAt: new Date().toISOString(),
+          canDirectSave: true,
+          isMultiSource: false,
+          hasManualRows: false,
+          hasMergedRows: false,
+          lastKnownFileModified: pendingFileModified.current,
+        };
+        setWorkbookSessionMeta(session);
+        saveWorkbookSessionMeta(session);
+        isDirtyRef.current = false;
+        setIsDirty(false);
+        saveWorkbookDirtyFlag(false);
+      }
       toast.success(`Loaded ${result.data.rows.length} rows from "${result.data.filename}"`);
     }
   }, [data, setData, applySeedEdits, mergeAndPersistMeta]);
@@ -1038,6 +1604,9 @@ export function AssetViewer() {
   const handleImportEnrich = useCallback(() => {
     setImportModeOpen(false);
     if (pendingParsed.current && data) {
+      const preSnapshot = captureCurrentSnapshot(`Before import enrich: ${pendingFilename.current}`);
+      createDurableRestorePoint(buildRestorePointLabel("Before import enrich", pendingFilename.current), "import-enrich").catch(() => {});
+      dispatchCommand({ type: "importMerge", mode: "enrich", preSnapshot });
       const incoming = pendingParsed.current;
       // Detect username conflicts first.
       const { conflicts, nonConflicting, autoFills } = detectUsernameConflicts(
@@ -1104,17 +1673,28 @@ export function AssetViewer() {
       });
       applySeedEdits(remappedSeed);
       mergeAndPersistMeta(remapImportedAt(incoming.rows.length, (i) => idMap.get(i) ?? null));
+      // Invalidate direct save — dataset is now multi-source.
+      setWorkbookSessionMeta((prev) => {
+        if (!prev) return prev;
+        const next = { ...prev, canDirectSave: false, isMultiSource: true };
+        saveWorkbookSessionMeta(next);
+        return next;
+      });
+      markDirty();
       toast.success(`Enriched users — total rows: ${merged.rows.length}`);
       pendingParsed.current = null;
       pendingSeedEdits.current = {};
       pendingImportedAt.current = {};
       setPendingIsUsersFile(false);
     }
-  }, [data, edits, setData, applySeedEdits, mergeAndPersistMeta, remapImportedAt, applyConflictResolutions]);
+  }, [data, edits, setData, applySeedEdits, mergeAndPersistMeta, remapImportedAt, applyConflictResolutions, createDurableRestorePoint, captureCurrentSnapshot, dispatchCommand, markDirty]);
 
   const handleImportReplace = useCallback(() => {
     setImportModeOpen(false);
     if (pendingParsed.current) {
+      const preSnapshot = captureCurrentSnapshot(`Before import replace: ${pendingFilename.current}`);
+      createDurableRestorePoint(buildRestorePointLabel("Before import replace", pendingFilename.current), "import-replace").catch(() => {});
+      dispatchCommand({ type: "importMerge", mode: "replace", preSnapshot });
       setData(pendingParsed.current);
       applySeedEdits(pendingSeedEdits.current);
       // Replace: row ids === original idx
@@ -1124,16 +1704,45 @@ export function AssetViewer() {
       saveImportMeta(meta);
       setImportMeta(meta);
       setLastImportAt(null);
+      // Set workbook session for direct-save eligibility.
+      const fileType = detectWorkbookFileType(pendingFilename.current);
+      if (fileType === "xlsx" || fileType === "xls") {
+        const loadedAt = new Date().toISOString();
+        const wbId = buildWorkbookId(pendingFilename.current, pendingSheet.current, loadedAt);
+        const session: WorkbookSessionMeta = {
+          workbookId: wbId,
+          filename: pendingFilename.current,
+          sheetName: pendingSheet.current,
+          fileType,
+          mapping: {},
+          loadedAt,
+          canDirectSave: true,
+          isMultiSource: false,
+          hasManualRows: false,
+          hasMergedRows: false,
+        };
+        setWorkbookSessionMeta(session);
+        saveWorkbookSessionMeta(session);
+      } else {
+        clearWorkbookSessionMeta();
+        setWorkbookSessionMeta(null);
+      }
+      isDirtyRef.current = false;
+      setIsDirty(false);
+      saveWorkbookDirtyFlag(false);
       toast.success(`Replaced with ${pendingParsed.current.rows.length} rows`);
       pendingParsed.current = null;
       pendingSeedEdits.current = {};
       pendingImportedAt.current = {};
     }
-  }, [setData, applySeedEdits]);
+  }, [setData, applySeedEdits, createDurableRestorePoint, captureCurrentSnapshot, dispatchCommand]);
 
   const handleImportAdd = useCallback(() => {
     setImportModeOpen(false);
     if (pendingParsed.current && data) {
+      const preSnapshot = captureCurrentSnapshot(`Before import add: ${pendingFilename.current}`);
+      createDurableRestorePoint(buildRestorePointLabel("Before import add", pendingFilename.current), "import-add").catch(() => {});
+      dispatchCommand({ type: "importMerge", mode: "add", preSnapshot });
       const incoming = pendingParsed.current;
       // Detect username conflicts first.
       const { conflicts, nonConflicting, autoFills } = detectUsernameConflicts(
@@ -1185,12 +1794,20 @@ export function AssetViewer() {
       }
       applySeedEdits(remappedSeed);
       mergeAndPersistMeta(remapImportedAt(incoming.rows.length, (i) => maxExistingId + 1 + i));
+      // Invalidate direct save — dataset is now multi-source.
+      setWorkbookSessionMeta((prev) => {
+        if (!prev) return prev;
+        const next = { ...prev, canDirectSave: false, isMultiSource: true };
+        saveWorkbookSessionMeta(next);
+        return next;
+      });
+      markDirty();
       toast.success(`Added ${incoming.rows.length} rows (total: ${merged.rows.length})`);
       pendingParsed.current = null;
       pendingSeedEdits.current = {};
       pendingImportedAt.current = {};
     }
-  }, [data, edits, setData, applySeedEdits, mergeAndPersistMeta, remapImportedAt, applyConflictResolutions]);
+  }, [data, edits, setData, applySeedEdits, mergeAndPersistMeta, remapImportedAt, applyConflictResolutions, createDurableRestorePoint, captureCurrentSnapshot, dispatchCommand, markDirty]);
 
   const handleConflictApply = useCallback((resolutions: ConflictResolutions) => {
     setConflictOpen(false);
@@ -1370,9 +1987,20 @@ export function AssetViewer() {
       if (computername && data.rows.some((r) => r.computername.toLowerCase() === computername.toLowerCase())) {
         exceptions.push("Duplicate Computername (cross-file)");
       }
-      const newRow: AssetRow = { id: newId, computername, modell, user, raw, exceptions, sourceFile: "Manual entry" };
+      const newRow: AssetRow = {
+        id: newId, computername, modell, user, raw, exceptions,
+        sourceFile: "Manual entry",
+        sourceOriginKind: "manual",
+      };
       const updatedData: AssetData = { ...data, rows: [...data.rows, newRow] };
       setData(updatedData);
+      // Mark session as having manual rows (disables direct save).
+      setWorkbookSessionMeta((prev) => {
+        if (!prev) return prev;
+        const next = { ...prev, hasManualRows: true };
+        saveWorkbookSessionMeta(next);
+        return next;
+      });
 
       const filledFields = Object.entries(raw)
         .filter(([, v]) => v && v.trim() !== "")
@@ -1388,19 +2016,22 @@ export function AssetViewer() {
         ? appendComment(withStatus, describeChange("Warranty until", "", warrantyUntil))
         : withStatus;
 
+      const newEdits: AssetEdits = { status, warrantyUntil, comment: withWarranty };
       setEditsState((prev) => {
-        const next = { ...prev, [String(newId)]: { status, warrantyUntil, comment: withWarranty } };
+        const next = { ...prev, [String(newId)]: newEdits };
         saveEdits(next);
         return next;
       });
+      dispatchCommand({ type: "addRow", row: newRow, editKey: String(newId), edits: newEdits });
       toast.success(`Added manual row "${computername || "Unnamed"}"`);
     });
-  }, [data, setData, ensureInitials]);
+  }, [data, setData, ensureInitials, dispatchCommand]);
 
   const handleReplaceDevice = useCallback(
     (rowId: number, source: ReplaceSource, oldDestination: OldDeviceDestination) => {
       if (!data) return;
       ensureInitials(() => {
+        const preSnapshot = captureCurrentSnapshot("Before replace device");
         const target = data.rows.find((r) => r.id === rowId);
         if (!target) return;
         const oldUser = target.user;
@@ -1568,15 +2199,32 @@ export function AssetViewer() {
             ? `Replaced device for "${oldUser || "user"}" → ${source.computername}`
             : `Re-assigned in-stock device to "${oldUser || "user"}"`,
         );
+        dispatchCommand({ type: "replaceDevice", preSnapshot });
       });
     },
-    [data, setData, ensureInitials],
+    [data, setData, ensureInitials, captureCurrentSnapshot, dispatchCommand],
   );
 
   // Keep the forward ref in sync.
   useEffect(() => {
     handleReplaceDeviceRef.current = handleReplaceDevice;
   }, [handleReplaceDevice]);
+
+  // Keyboard shortcuts: Ctrl+Z = undo, Ctrl+Y / Ctrl+Shift+Z = redo.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      if (e.key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+      } else if (e.key === "y" || (e.key === "z" && e.shiftKey)) {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [handleUndo, handleRedo]);
 
   const openMappingFor = useCallback((buffer: ArrayBuffer, sheet: string, filename: string) => {
     pendingBuffer.current = buffer;
@@ -1598,6 +2246,8 @@ export function AssetViewer() {
   const handleFile = useCallback(async (file: File) => {
     try {
       let buffer = await file.arrayBuffer();
+      // Store file.lastModified so conflict detection can compare against it after save.
+      pendingFileModified.current = file.lastModified;
 
       if (isCsvFile(file)) {
         buffer = normalizeCsvBufferEncoding(buffer);
@@ -1651,12 +2301,29 @@ export function AssetViewer() {
     setMappingOpen(false);
     if (!pendingBuffer.current) return;
     if (remember) saveMapping(headerSetHash(mappingHeaders), mapping);
+    const filename = pendingFilename.current;
+    const sheetName = pendingSheet.current;
+    const fileType = detectWorkbookFileType(filename);
+    // Capture workbook buffer for direct-save when the file is xlsx/xls.
+    if (fileType === "xlsx" || fileType === "xls") {
+      workbookBufferRef.current = pendingBuffer.current;
+      workbookHandleRef.current = null; // reset handle — user must grant via Save As first
+      // Also store in per-workbook map (populated after wbId is known).
+    }
+    const loadedAt = new Date().toISOString();
+    const wbId = buildWorkbookId(filename, sheetName, loadedAt);
+    const workbookContext: WorkbookContext = { workbookId: wbId, fileType };
+    if ((fileType === "xlsx" || fileType === "xls") && pendingBuffer.current) {
+      workbookBuffersRef.current.set(wbId, pendingBuffer.current);
+    }
     const result = parseSheetWithMapping(
       pendingBuffer.current,
-      pendingSheet.current,
-      pendingFilename.current,
+      sheetName,
+      filename,
       mapping,
+      workbookContext,
     );
+    // Attach workbook seed so applyParsed can set session meta on fresh load.
     applyParsed(result);
     pendingBuffer.current = null;
   }, [applyParsed, mappingHeaders]);
@@ -1673,8 +2340,15 @@ export function AssetViewer() {
   }, [handleFile]);
 
   const handleClear = useCallback(() => {
+    const preSnapshot = captureCurrentSnapshot("Before clear");
+    createDurableRestorePoint(buildRestorePointLabel("Before clear"), "clear-data").catch(() => {});
+    dispatchCommand({ type: "clearData", preSnapshot });
     clearData();
     clearAllEdits();
+    clearWorkbookSessionMeta();
+    clearWorkbookDirtyFlag();
+    setWorkbookSessionMeta(null);
+    setIsDirty(false);
     setData(null);
     setEditsState({});
     setUserEdits({});
@@ -1689,7 +2363,7 @@ export function AssetViewer() {
     setSkanskaFilter("all");
     setConfirmClear(false);
     toast.success("Local data cleared.");
-  }, [setData, defaultStatusFilter]);
+  }, [setData, defaultStatusFilter, createDurableRestorePoint, captureCurrentSnapshot, dispatchCommand]);
 
   const clearAllFilters = useCallback(() => {
     setSearch("");
@@ -1938,6 +2612,97 @@ export function AssetViewer() {
               </Tooltip>
 
               <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv,text/csv" onChange={onFileChange} className="hidden" />
+              {data && (
+                <>
+                  {/* ── Undo / Redo ──────────────────────────────────────── */}
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={handleUndo}
+                        disabled={commandUndoRedo.undoStack.length === 0}
+                        className="px-2"
+                      >
+                        <Undo2 className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Undo (Ctrl+Z)</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={handleRedo}
+                        disabled={commandUndoRedo.redoStack.length === 0}
+                        className="px-2"
+                      >
+                        <Redo2 className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Redo (Ctrl+Y)</TooltipContent>
+                  </Tooltip>
+                  {/* ── Save Workbook ────────────────────────────────────── */}
+                  {canDirectSaveWorkbook(workbookSessionMeta) && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          size="sm"
+                          variant={isDirty ? "default" : "outline"}
+                          onClick={handleSaveWorkbook}
+                          className="gap-1"
+                        >
+                          <Save className="h-4 w-4" />
+                          Save{isDirty ? " *" : ""}
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {isDirty
+                          ? "Save changes back to the original workbook"
+                          : "Workbook is up to date"}
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                  {workbookSessionMeta && (workbookSessionMeta.fileType === "xlsx" || workbookSessionMeta.fileType === "xls") && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button size="sm" variant="outline" onClick={handleSaveWorkbookAs} className="gap-1">
+                          <Save className="h-4 w-4" /> Save As
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Save a copy of the workbook with current edits applied</TooltipContent>
+                    </Tooltip>
+                  )}
+                  {workbookSessionMeta?.isMultiSource && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button size="sm" variant={isDirty ? "default" : "outline"} onClick={handleSaveEachWorkbook} className="gap-1">
+                          <Save className="h-4 w-4" /> Save each source
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Save changes back into each original source workbook separately</TooltipContent>
+                    </Tooltip>
+                  )}
+                </>
+              )}
+              {/* ── Restore Points ──────────────────────────────────────── */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button size="sm" variant="ghost" onClick={handleOpenRestorePoints} className="px-2">
+                    <History className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Browse and restore durable backups</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button size="sm" variant="ghost" onClick={() => setSettingsOpen(true)} className="px-2">
+                    <Settings className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Settings</TooltipContent>
+              </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button size="sm" variant="outline" onClick={() => setDebugOpen(true)}>
@@ -2041,10 +2806,41 @@ export function AssetViewer() {
                     <span>↕ Click column headers to sort</span>
                   </span>
                 </div>
-                {selectedIds.size > 0 && (
-                  <div className="flex items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-2">
+                <div className="flex items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-2">
                     <span className="text-sm font-medium">{selectedIds.size} selected</span>
+                    {selectedIds.size === 1 && (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setReplaceOpen(true)}
+                        >
+                          <RefreshCw className="h-3.5 w-3.5 mr-1" /> Replace device
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            const id = Array.from(selectedIds)[0];
+                            const r = rows.find((x) => x.id === id) ?? null;
+                            setHistoryDrawerRow(r);
+                            setHistoryDrawerOpen(true);
+                          }}
+                        >
+                          History
+                        </Button>
+                      </>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={selectedIds.size === 0}
+                      onClick={() => setBatchCommentOpen(true)}
+                    >
+                      Add comment…
+                    </Button>
                     <Select
+                      disabled={selectedIds.size === 0}
                       value="__batch__"
                       onValueChange={(v) => {
                         if (v === "__batch__") return;
@@ -2071,6 +2867,7 @@ export function AssetViewer() {
                       </SelectContent>
                     </Select>
                     <Select
+                      disabled={selectedIds.size === 0}
                       value="__batch__"
                       onValueChange={(v) => {
                         if (v === "__batch__") return;
@@ -2089,6 +2886,7 @@ export function AssetViewer() {
                       </SelectContent>
                     </Select>
                     <Select
+                      disabled={selectedIds.size === 0}
                       value="__batch__"
                       onValueChange={(v) => {
                         if (v === "__batch__") return;
@@ -2108,39 +2906,13 @@ export function AssetViewer() {
                     </Select>
                     <Button
                       size="sm"
-                      variant="outline"
-                      onClick={() => setBatchCommentOpen(true)}
+                      variant="ghost"
+                      disabled={selectedIds.size === 0}
+                      onClick={() => setSelectedIds(new Set())}
                     >
-                      Add comment…
-                    </Button>
-                    {selectedIds.size === 1 && (
-                      <>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setReplaceOpen(true)}
-                        >
-                          <RefreshCw className="h-3.5 w-3.5 mr-1" /> Replace device
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            const id = Array.from(selectedIds)[0];
-                            const r = rows.find((x) => x.id === id) ?? null;
-                            setHistoryDrawerRow(r);
-                            setHistoryDrawerOpen(true);
-                          }}
-                        >
-                          History
-                        </Button>
-                      </>
-                    )}
-                    <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>
                       Deselect all
                     </Button>
                   </div>
-                )}
                 <AssetTable
                   rows={filtered}
                   columns={columns}
@@ -2303,6 +3075,52 @@ export function AssetViewer() {
           </AlertDialogContent>
         </AlertDialog>
 
+        <AlertDialog open={!!saveConflict} onOpenChange={(open) => { if (!open) setSaveConflict(null); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>File modified externally</AlertDialogTitle>
+              <AlertDialogDescription>
+                The workbook was changed outside this app{saveConflict ? ` at ${new Date(saveConflict.externalModifiedAt).toLocaleString()}` : ""}.
+                Overwriting it will discard those external changes.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setSaveConflict(null)}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={async () => {
+                  if (!saveConflict || !data || !workbookBufferRef.current || !workbookSessionMeta) {
+                    setSaveConflict(null);
+                    return;
+                  }
+                  // Force overwrite by clearing lastKnownFileModified before saving.
+                  const sessionWithoutConflict = { ...workbookSessionMeta, lastKnownFileModified: undefined };
+                  try {
+                    const saveResult = await savePatchedWorkbook(
+                      workbookBufferRef.current,
+                      { rows: data.rows, columns: data.columns, edits, userEdits },
+                      sessionWithoutConflict,
+                      workbookHandleRef.current ?? undefined,
+                    );
+                    if (!("conflict" in saveResult)) {
+                      const { result, handle } = saveResult;
+                      if (handle) workbookHandleRef.current = handle;
+                      markSaved(result.savedAt, result.filename, result.fileModifiedAt);
+                      toast.success(`Saved "${result.filename}" (overwrote external changes)`);
+                    }
+                  } catch (err) {
+                    if ((err as { name?: string })?.name !== "AbortError") {
+                      toast.error(`Save failed: ${err instanceof Error ? err.message : String(err)}`);
+                    }
+                  }
+                  setSaveConflict(null);
+                }}
+              >
+                Overwrite
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
         <SheetPicker
           open={sheetPickerOpen}
           sheets={pendingSheets}
@@ -2435,6 +3253,33 @@ export function AssetViewer() {
           open={initialsOpen}
           onConfirm={handleInitialsConfirm}
           onCancel={handleInitialsSkip}
+        />
+        <RestorePointsDialog
+          open={restorePointsOpen}
+          onOpenChange={setRestorePointsOpen}
+          items={restorePointItems}
+          onRestore={handleRestorePointApply}
+          onDelete={handleDeleteRestorePoint}
+          activeFolderName={restorePointFolderName}
+          folderNeedsPermission={restorePointFolderNeedsPermission}
+          onSelectFolder={handleSelectRestorePointFolder}
+          onClearFolder={handleClearRestorePointFolder}
+          onReRequestPermission={handleReRequestRestorePointPermission}
+        />
+        <SettingsDialog
+          open={settingsOpen}
+          onOpenChange={setSettingsOpen}
+          values={{
+            staleThresholdDays: staleThreshold,
+            maxRestorePoints,
+            maxSaveWorkbookPerDay,
+          }}
+          onSave={handleSettingsSave}
+          activeFolderName={restorePointFolderName}
+          folderNeedsPermission={restorePointFolderNeedsPermission}
+          onSelectFolder={handleSelectRestorePointFolder}
+          onClearFolder={handleClearRestorePointFolder}
+          onReRequestPermission={handleReRequestRestorePointPermission}
         />
       </div>
     </TooltipProvider>

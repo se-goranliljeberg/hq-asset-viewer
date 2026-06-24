@@ -31,10 +31,15 @@ const sections = [
   { id: "deployment", label: "10. Deployment & Versioning" },
   { id: "audit", label: "11. Audit Log" },
   { id: "export", label: "12. Export Controls" },
-  { id: "approval", label: "13. Approval Checklist" },
+  { id: "filesystem", label: "13. File System Access" },
+  { id: "approval", label: "14. Approval Checklist" },
 ];
 
 function TechnicalDoc() {
+  const scrollToSection = (id: string) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   return (
     <article className="space-y-8 max-w-3xl">
       <header className="space-y-3">
@@ -57,9 +62,13 @@ function TechnicalDoc() {
           <ol className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-sm">
             {sections.map((s) => (
               <li key={s.id}>
-                <a href={`#${s.id}`} className="text-primary hover:underline">
+                <button
+                  type="button"
+                  onClick={() => scrollToSection(s.id)}
+                  className="text-primary hover:underline"
+                >
                   {s.label}
-                </a>
+                </button>
               </li>
             ))}
           </ol>
@@ -104,8 +113,9 @@ function TechnicalDoc() {
             shell; no application backend.
           </li>
           <li>
-            <strong>State:</strong> React state in memory + <code>localStorage</code> for
-            persistence.
+            <strong>State:</strong> React state in memory + <code>localStorage</code> +
+            IndexedDB for durable restore points. Optionally the File System Access API for
+            on-disk backup files.
           </li>
         </ul>
       </Section>
@@ -144,9 +154,11 @@ function TechnicalDoc() {
 
       <Section id="storage" title="4. Data Storage">
         <p>
-          All user data lives in the browser&rsquo;s <code>localStorage</code>, scoped to the app
-          origin. The keys used are:
+          User data is stored in two browser-local mechanisms, both scoped to the app origin.
+          Optionally, restore points can also be written to a user-chosen folder on disk.
         </p>
+
+        <h3 className="font-semibold mt-4 mb-2">localStorage keys</h3>
         <ul className="list-disc list-inside space-y-1 mt-2 font-mono text-xs">
           <li><code>hq_asset_data</code> — parsed asset rows + columns</li>
           <li><code>hq_asset_edits</code> — manual edits & comments per row (incl. userActive, skanskaComputer)</li>
@@ -158,13 +170,38 @@ function TechnicalDoc() {
           <li><code>hq_filter_managers</code> — Manager filter chip selections</li>
           <li><code>hq_filter_exclude_inactive</code> — &ldquo;Hide inactive&rdquo; toggle state</li>
           <li><code>hq_filter_skanska</code> — Skanska tri-state filter (all / skanska / non-skanska)</li>
-          <li><code>hq_stale_threshold_days</code> — configurable stale-logon threshold (default 90)</li>
-          <li><code>hq_last_seen_version</code> — last app version seen by this browser (used by the &ldquo;What&rsquo;s new&rdquo; toast)</li>
+          <li><code>hq_stale_threshold_days</code> — configurable stale-logon threshold (default 90 days)</li>
+          <li><code>hq_max_restore_points</code> — max total restore points to retain (default 20)</li>
+          <li><code>hq_max_save_workbook_per_day</code> — max save-workbook restore points per calendar day (default 3)</li>
+          <li><code>hq_last_seen_version</code> — last app version seen by this browser (&ldquo;What&rsquo;s new&rdquo; toast)</li>
         </ul>
-        <p className="mt-2">
-          Data never leaves the browser. There is no IndexedDB, no cookies, no Service Worker
-          caching of user data, no third-party storage. Clearing site data in the browser fully
-          wipes the application state.
+
+        <h3 className="font-semibold mt-4 mb-2">IndexedDB databases</h3>
+        <ul className="list-disc list-inside space-y-1 mt-2 font-mono text-xs">
+          <li>
+            <code>hq_asset_viewer_backups</code> / <code>restore_points</code> — full-state
+            durable restore points (used when no file-system folder is active).
+          </li>
+          <li>
+            <code>hq_asset_viewer_meta</code> / <code>handles</code> — persists the
+            <code> FileSystemDirectoryHandle</code> for the user-chosen restore-point folder so
+            access can be re-established across page reloads without a new picker prompt.
+          </li>
+        </ul>
+
+        <h3 className="font-semibold mt-4 mb-2">File System Access API (optional)</h3>
+        <p className="mt-1">
+          If the user selects a folder in Settings, restore points are written as JSON files in a
+          <code> restore-points/</code> sub-directory of that folder instead of IndexedDB. This
+          makes backups portable and survives clearing browser storage. The user grants
+          read-write permission via the browser&rsquo;s native directory picker; the app never
+          accesses any files outside the chosen folder.
+        </p>
+
+        <p className="mt-3">
+          Data never leaves the browser via the network. There are no cookies, no Service Worker
+          caching of user data, no third-party storage. Clearing site data in the browser wipes
+          localStorage and IndexedDB; file-system backups (if configured) are unaffected.
         </p>
       </Section>
 
@@ -241,7 +278,14 @@ function TechnicalDoc() {
         <p>
           Targeted browsers: current and previous major versions of Chromium-based browsers (Edge,
           Chrome), Firefox and Safari. Requires <code>localStorage</code> (~5–10&nbsp;MB depending
-          on browser) and the <code>FileReader</code> API. JavaScript must be enabled.
+          on browser), IndexedDB, and the <code>FileReader</code> API. JavaScript must be enabled.
+        </p>
+        <p className="mt-2">
+          <strong>File System Access API</strong> (Save Workbook, file-based restore points) is
+          required for on-disk save and folder-backed backups. This API is fully supported in
+          Chromium-based browsers (Edge, Chrome). Firefox and Safari do not yet implement the
+          writable part of this API; those features will be silently unavailable on those browsers,
+          but all other functionality works normally.
         </p>
       </Section>
 
@@ -327,7 +371,49 @@ npm run bump:major    # major  e.g. 0.2.0 → 1.0.0`}
         </p>
       </Section>
 
-      <Section id="approval" title="13. Approval Checklist">
+      <Section id="filesystem" title="13. File System Access">
+        <p>
+          Two features use the browser&rsquo;s{" "}
+          <a
+            href="https://developer.mozilla.org/en-US/docs/Web/API/File_System_Access_API"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary underline"
+          >
+            File System Access API
+          </a>
+          :
+        </p>
+        <ul className="list-disc list-inside space-y-1 mt-2">
+          <li>
+            <strong>Save Workbook</strong> — after the user opens a <code>.xlsx</code> file, the
+            app can write patched data back to the <em>same file</em> on disk using
+            <code> FileSystemFileHandle.createWritable()</code>.
+          </li>
+          <li>
+            <strong>File-based restore points</strong> — the user selects a folder once via the
+            Settings dialog. Restore points are written as JSON files inside a
+            <code> restore-points/</code> sub-directory of that folder. The
+            <code> FileSystemDirectoryHandle</code> is persisted in IndexedDB so subsequent page
+            loads can re-establish access silently (if the browser still holds permission).
+          </li>
+        </ul>
+        <p className="mt-3">
+          <strong>Permission model:</strong> The browser shows a native permission prompt the first
+          time the user triggers either feature. The app requests <em>readwrite</em> mode. No
+          files outside the explicitly chosen file/folder can be accessed. The app never calls
+          <code> showDirectoryPicker</code> or <code> showSaveFilePicker</code> without a direct
+          user gesture (button click).
+        </p>
+        <p className="mt-2">
+          <strong>Graceful degradation:</strong> If the File System Access API is unavailable
+          (Firefox, Safari, or blocked by policy), Save Workbook and folder-based restore points
+          are simply unavailable; all other functionality is unaffected. Restore points fall back
+          to IndexedDB automatically.
+        </p>
+      </Section>
+
+      <Section id="approval" title="14. Approval Checklist">
         <ul className="space-y-1">
           {[
             "No backend storage of user data",
@@ -335,7 +421,8 @@ npm run bump:major    # major  e.g. 0.2.0 → 1.0.0`}
             "No authentication or credential handling",
             "All processing in-browser; HTTPS-only delivery",
             "Append-only audit log on edits",
-            "User can wipe all data at any time",
+            "User can wipe all data at any time (Clear button + browser site data)",
+            "File System Access API used only for user-initiated save and backup; no background file access",
             "Open dependencies, no native binaries",
           ].map((item) => (
             <li key={item} className="flex items-start gap-2 text-sm">

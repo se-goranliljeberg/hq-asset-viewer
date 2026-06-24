@@ -281,7 +281,7 @@ export function AssetTable({ rows, columns, sort, onSort, edits, onEdit, userEdi
 
   const getColumnLabel = useCallback((col: string): string => {
     if (col === "Status") return "Computer Status";
-    if (col === "OU") return "User Location";
+    if (col === "OU") return "Computer OU";
     return col;
   }, []);
 

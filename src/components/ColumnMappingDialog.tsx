@@ -40,6 +40,8 @@ function buildInitial(headers: string[], saved?: Mapping | null): Mapping {
 export function ColumnMappingDialog({
   open, filename, sheetName, headers, samples, initialMapping, onApply, onCancel,
 }: Props) {
+  const canonicalLabel = (f: CanonicalField) => (f === "OU" ? "Computer OU" : f);
+
   const [mapping, setMapping] = useState<Mapping>(() => buildInitial(headers, initialMapping));
 
   // Reset when a new file is opened.
@@ -106,7 +108,7 @@ export function ColumnMappingDialog({
                         <SelectContent>
                           <SelectItem value="ignore">— Ignore —</SelectItem>
                           {CANONICAL_FIELDS.map((f) => (
-                            <SelectItem key={f} value={f}>{f}</SelectItem>
+                            <SelectItem key={f} value={f}>{canonicalLabel(f)}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -126,7 +128,7 @@ export function ColumnMappingDialog({
             <ul className="space-y-0.5 list-disc list-inside">
               {conflicts.map(([field, hs]) => (
                 <li key={field}>
-                  <strong>{field}</strong> is mapped from {hs.length} headers ({hs.join(", ")}). Last one wins.
+                  <strong>{canonicalLabel(field)}</strong> is mapped from {hs.length} headers ({hs.join(", ")}). Last one wins.
                 </li>
               ))}
             </ul>

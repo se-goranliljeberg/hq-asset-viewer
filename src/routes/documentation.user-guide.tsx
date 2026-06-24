@@ -36,13 +36,20 @@ const sections = [
   { id: "exceptions", label: "14. Exceptions" },
   { id: "reset", label: "15. Reset columns / mappings" },
   { id: "export", label: "16. Exporting" },
-  { id: "clear", label: "17. Clearing local data" },
-  { id: "think", label: "18. What to think about" },
-  { id: "troubleshooting", label: "19. Troubleshooting" },
-  { id: "asset-lifecycle", label: "20. Asset lifecycle" },
+  { id: "save-workbook", label: "17. Saving the workbook" },
+  { id: "restore-points", label: "18. Restore points" },
+  { id: "settings", label: "19. Settings" },
+  { id: "clear", label: "20. Clearing local data" },
+  { id: "think", label: "21. What to think about" },
+  { id: "troubleshooting", label: "22. Troubleshooting" },
+  { id: "asset-lifecycle", label: "23. Asset lifecycle" },
 ];
 
 function UserGuide() {
+  const scrollToSection = (id: string) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   return (
     <article className="space-y-8 max-w-3xl">
       <header className="space-y-3">
@@ -65,9 +72,13 @@ function UserGuide() {
           <ol className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-sm">
             {sections.map((s) => (
               <li key={s.id}>
-                <a href={`#${s.id}`} className="text-primary hover:underline">
+                <button
+                  type="button"
+                  onClick={() => scrollToSection(s.id)}
+                  className="text-primary hover:underline"
+                >
                   {s.label}
-                </a>
+                </button>
               </li>
             ))}
           </ol>
@@ -103,7 +114,7 @@ function UserGuide() {
         <p className="mt-1 font-mono text-xs">
           Username · Name · Computername · Modell · Last account activity · Last logon date · Status
           · Warranty until · AD Create.Date · End date · Company · Email · Department · Manager ·
-          User Active? · Skanska computer? · OU
+          User Active? · Skanska computer? · Computer OU
         </p>
         <Info_>
           The app pre-fills the mapping using known aliases (e.g. <code>mail</code> → Email,
@@ -236,10 +247,10 @@ function UserGuide() {
           last logon&rdquo;).
         </p>
         <p className="mt-2">
-          The threshold defaults to <strong>90 days</strong> and can be changed via the small
-          &ldquo;Stale after __ days&rdquo; input in the FilterBar. Your choice is persisted in
-          localStorage. The KPI grid includes a <strong>Stale (&gt;Nd)</strong> card; click it to
-          filter the table to stale accounts only.
+          The threshold defaults to <strong>90 days</strong> and can be changed in{" "}
+          <strong>Settings → Stale last-logon threshold</strong> (gear icon in the toolbar). Your
+          choice is persisted in localStorage. The KPI grid includes a{" "}
+          <strong>Stale (&gt;Nd)</strong> card; click it to filter the table to stale accounts only.
         </p>
       </Section>
 
@@ -336,15 +347,105 @@ function UserGuide() {
         </p>
       </Section>
 
-      <Section id="clear" title="17. Clearing local data">
+      <Section id="save-workbook" title="17. Saving the workbook">
+        <p>
+          After loading an <code>.xlsx</code> / <code>.xls</code> file, a{" "}
+          <strong>Save</strong> button appears in the toolbar (highlighted when there are unsaved
+          edits). Clicking it patches the original workbook with all current edits and writes it
+          back to disk via the browser&rsquo;s File System Access API — no extra dialog needed
+          after the first save.
+        </p>
+        <ul className="list-disc list-inside space-y-1 mt-2">
+          <li>
+            <strong>Save As</strong> — saves a patched copy under a new filename; future saves
+            reuse that file handle.
+          </li>
+          <li>
+            <strong>Conflict detection</strong> — if the file was modified externally since the
+            last save, the app warns you before overwriting.
+          </li>
+          <li>
+            <strong>Multi-source sessions</strong> — if data was merged from multiple source
+            workbooks, a <em>Save each source</em> button appears and writes each workbook
+            separately with only its own rows.
+          </li>
+        </ul>
+        <Info_>
+          Save Workbook requires a Chromium-based browser (Edge or Chrome). The button will not
+          appear in Firefox or Safari.
+        </Info_>
+      </Section>
+
+      <Section id="restore-points" title="18. Restore points">
+        <p>
+          The app automatically creates a durable backup before any destructive operation: import
+          replace, import add, save workbook, replace device, batch status update, and clear.
+          Click the <strong>clock icon</strong> in the toolbar to open the Restore Points dialog.
+        </p>
+        <ul className="list-disc list-inside space-y-1 mt-2">
+          <li>Each restore point has a coloured kind badge and a timestamp.</li>
+          <li>Entries are grouped by calendar day for easy navigation.</li>
+          <li>Click <strong>Restore</strong> to roll back to that exact state. The current state
+            is pushed to the undo stack first, so you can undo the restore with Ctrl+Z.</li>
+          <li>Click the trash icon to delete individual restore points.</li>
+        </ul>
+        <p className="mt-2">
+          By default, restore points are stored in your browser&rsquo;s IndexedDB. To make them
+          portable and independent of browser storage, configure a folder in{" "}
+          <strong>Settings</strong> (see §19).
+        </p>
+        <Tip>
+          Import-replace restore points are never auto-pruned — they are kept as a permanent safety
+          net no matter how many newer restore points exist.
+        </Tip>
+      </Section>
+
+      <Section id="settings" title="19. Settings">
+        <p>
+          Click the <strong>gear icon</strong> in the toolbar to open the Settings dialog. Three
+          sections are available:
+        </p>
+        <ul className="list-disc list-inside space-y-2 mt-2">
+          <li>
+            <strong>Restore point storage</strong> — choose between browser storage (IndexedDB,
+            the default) and a folder on disk. When a folder is selected, restore points are saved
+            as JSON files inside a <code>restore-points/</code> sub-directory of that folder,
+            making them portable and independent of browser data clearing.
+            <ul className="list-disc list-inside ml-4 mt-1 space-y-1 text-muted-foreground">
+              <li>Click <em>Select folder…</em> and pick the folder that contains
+                <code> index.html</code> (or any other folder).</li>
+              <li>On the next page load, access is restored silently. If the browser&rsquo;s
+                permission has expired, click <em>Re-grant access</em>.</li>
+              <li>Click <em>Unlink folder</em> to revert to IndexedDB.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Restore point limits</strong> — configure how many restore points to keep
+            overall (default 20) and how many save-workbook entries to keep per calendar day
+            (default 3). Import-replace entries are never pruned regardless of these limits.
+          </li>
+          <li>
+            <strong>Stale last-logon threshold</strong> — the number of days after which a
+            Last logon date is highlighted amber (default 90).
+          </li>
+        </ul>
+        <p className="mt-2">All settings are saved to localStorage immediately on clicking <em>Save settings</em>.</p>
+      </Section>
+
+      <Section id="clear" title="20. Clearing local data">
         <Warning>
           <strong>Clear</strong> removes the loaded data, edits, mappings and column preferences
           from your browser. <strong>This cannot be undone.</strong> Export to CSV first if you
           want to keep a record.
         </Warning>
+        <p className="mt-2">
+          If you have configured a restore-point folder in Settings (§19), those JSON backup files
+          on disk are <em>not</em> deleted by Clear — they remain available and will be loaded next
+          time you open the app and re-grant folder access.
+        </p>
       </Section>
 
-      <Section id="think" title="18. What to think about">
+      <Section id="think" title="21. What to think about">
         <ul className="list-disc list-inside space-y-1">
           <li>
             <strong>Re-import after big source changes.</strong> The app cannot detect changes in
@@ -374,7 +475,7 @@ function UserGuide() {
         </ul>
       </Section>
 
-      <Section id="troubleshooting" title="19. Troubleshooting">
+      <Section id="troubleshooting" title="22. Troubleshooting">
         <p>
           Use <strong>Debug Import</strong> in the header to inspect a file before importing. It
           shows the detected sheets, headers, sample values and the suggested canonical mapping —
@@ -386,7 +487,7 @@ function UserGuide() {
         </p>
       </Section>
 
-      <Section id="asset-lifecycle" title="20. Asset lifecycle">
+      <Section id="asset-lifecycle" title="23. Asset lifecycle">
         <p>
           The app uses four lifecycle states:
           <strong> Deployed at user</strong>, <strong>In stock</strong>,
