@@ -42,6 +42,10 @@ const RELEASES: Release[] = [
       "The Restore Points dialog retains its folder status bar for quick access, but the Select folder / Unlink folder controls are now also available in the Settings dialog.",
       "pruneRestorePoints() now reads the configured limits from state instead of using hardcoded values.",
     ],
+    fixed: [
+      "Historical changelog cleanup: corrected semantic version typo from 0.4.3 to 0.4.30.",
+      "Historical changelog cleanup: aligned 0.4.34 date with surrounding release chronology.",
+    ],
   },
   {
     version: "0.4.35",
@@ -53,7 +57,7 @@ const RELEASES: Release[] = [
   },
   {
     version: "0.4.34",
-    date: "2026-05-05",
+    date: "2026-05-04",
     title: "Phase 2 Hardening: command undo/redo, richer restore points, save conflict detection and multi-source save",
     added: [
       "Command-based undo/redo — each mutation (field edit, batch operation, import, clear) now dispatches a typed ViewerCommand. Undo/redo is precise and diff-based instead of full-state snapshots, reducing memory usage.",
@@ -112,7 +116,7 @@ const RELEASES: Release[] = [
     ],
   },
   {
-    version: "0.4.3",
+    version: "0.4.30",
     date: "2026-04-23",
     title: "CSV export history, comment round-trip & smarter import highlight",
     added: [
